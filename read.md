@@ -3,6 +3,7 @@ Mixing may result in undesirable confusions.
 I personally prefer meta's stack because its open source with all code and models available to read and experiment with. 
 
 Meta's audio work is available in https://github.com/facebookresearch/audiocraft
+
 Google's in : https://google-research.github.io/seanet/
 
 Audio Tokenization 
