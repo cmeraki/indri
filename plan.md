@@ -1,6 +1,13 @@
 ### Part 1 [2 months]
-Verify end to end pipeline for training a small e2e multimodal network that takes and returns audio, images (maybe video) and text
+Verify end to end pipeline for training a small e2e multimodal network that takes and returns audio, images and text
 
+Goals 
+
+    1. Generate human like speech conditioned on audio
+    2. Text to speech, speech to text
+    3. Consume Images to generate text ***
+    4. Consume video to generate video *** 
+    
 Questions :
 
     1. How to tokenize audio, images (and video) ? 
