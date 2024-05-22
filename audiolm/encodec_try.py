@@ -1,7 +1,9 @@
 import math
 
+import numpy as np
 from encodec import EncodecModel
 from encodec.utils import convert_audio
+from pathlib import Path
 
 import torchaudio
 import torch
@@ -9,7 +11,6 @@ import glob
 import os
 from tqdm import tqdm
 from torch.utils.data import Dataset, DataLoader
-
 
 DEVICE = 'cuda'
 
@@ -32,7 +33,6 @@ class AudioDataset(Dataset):
 
         return waveform, sr
 
-
 def collate_fn(batch):
     waveforms, sample_rates = zip(*batch)
     max_length = max(waveform.size(1) for waveform in waveforms)
@@ -40,12 +40,11 @@ def collate_fn(batch):
     padded_waveforms = []
     for waveform in waveforms:
         padding = max_length - waveform.size(1)
-        padded_waveform = torch.nn.functional.pad(waveform, (0, padding))
+        padded_waveform = torch.nn.functional.pad(waveform, (-1, padding))
         padded_waveforms.append(padded_waveform)
 
     padded_waveforms = torch.stack(padded_waveforms)
     return padded_waveforms, sample_rates
-
 
 def get_audio_batches(files, batch_size, sample_rate, channels):
     n_batches = math.ceil(len(files)//batch_size)
@@ -64,15 +63,22 @@ def get_audio_batches(files, batch_size, sample_rate, channels):
         batch = torch.stack(batch, dim=0)
         yield batch
 
+def get_model(model_sr=24, bandwidth=6):
+    if model_sr == 24:
+        model = EncodecModel.encodec_model_24khz()
+    elif model_sr == 48:
+        model = EncodecModel.encodec_model_48khz()
+    else:
+        raise "Unknown model sample rate, chose from 24 and 48"
 
-def get_model():
-    model = EncodecModel.encodec_model_24khz()
-    model.set_target_bandwidth(6)
+    model.set_target_bandwidth(bandwidth)
     model.zero_grad()
     return model
 
-
 def encode(files, outdir, batch_size=1):
+    outdir = Path(outdir)
+    outdir.mkdir(exist_ok=True, parents=True)
+
     model = get_model()
     model = model.to(DEVICE)
     dataset = AudioDataset(files, sample_rate=24000, channels=1)
@@ -84,15 +90,24 @@ def encode(files, outdir, batch_size=1):
 
     model = torch.compile(model)
 
-    for batch, sample_rates in tqdm(dataloader):
+    for batch_index, (batch, sample_rates) in enumerate(tqdm(dataloader)):
         batch = batch.to(DEVICE)
         with torch.no_grad():
             encoded_frames = model.encode(batch)
 
         codes = torch.cat([encoded[0] for encoded in encoded_frames], dim=-1)
+        codes = codes.detach().cpu().numpy()
+        fname = f"{outdir}/{batch_index}.npy"
+        np.save(fname, codes)
 
+if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser(description='Encode audio files.')
+    parser.add_argument('--indir', type=str, required=True, help='Input directory for audio files.')
+    parser.add_argument('--outdir', type=str, required=True, help='Output directory for encoded audio.')
+    parser.add_argument('--batch_size', type=int, default=32, help='Batch size for encoding.')
 
-indir = "/home/apurva/projects/indri/data/indian_languages/valid_audio/kb_data_clean_m4a/*/valid/audio/*.m4a"
-files = list(glob.glob(indir))
-outdir = "encoded_audio"
-encode(files, outdir=outdir, batch_size=32)
+    args = parser.parse_args()
+
+    files = list(glob.glob(args.indir))
+    encode(files, outdir=args.outdir, batch_size=args.batch_size)
