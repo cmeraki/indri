@@ -2,7 +2,7 @@ import math
 
 import numpy as np
 from encodec import EncodecModel
-from encodec.utils import convert_audio
+from encodec.utils import convert_audio, save_audio
 from pathlib import Path
 
 import torchaudio
@@ -12,7 +12,7 @@ import os
 from tqdm import tqdm
 from torch.utils.data import Dataset, DataLoader
 
-DEVICE = 'cuda'
+DEVICE = 'cpu'
 
 class AudioDataset(Dataset):
     def __init__(self, audio_files, sample_rate, channels):
@@ -79,7 +79,7 @@ def encode(files, outdir, batch_size=1):
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True, parents=True)
 
-    model = get_model()
+    model = get_model(bandwidth=3)
     model = model.to(DEVICE)
     dataset = AudioDataset(files, sample_rate=24000, channels=1)
     dataloader = DataLoader(dataset,
@@ -94,6 +94,10 @@ def encode(files, outdir, batch_size=1):
         batch = batch.to(DEVICE)
         with torch.no_grad():
             encoded_frames = model.encode(batch)
+            print(encoded_frames[0][0].shape)
+            dec = model.decode(encoded_frames)
+            save_audio(dec[0], path='apple.wav', sample_rate=24000)
+
 
         codes = torch.cat([encoded[0] for encoded in encoded_frames], dim=-1)
         codes = codes.detach().cpu().numpy()
@@ -105,7 +109,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Encode audio files.')
     parser.add_argument('--indir', type=str, required=True, help='Input directory for audio files.')
     parser.add_argument('--outdir', type=str, required=True, help='Output directory for encoded audio.')
-    parser.add_argument('--batch_size', type=int, default=32, help='Batch size for encoding.')
+    parser.add_argument('--batch_size', type=int, default=2, help='Batch size for encoding.')
 
     args = parser.parse_args()
 
