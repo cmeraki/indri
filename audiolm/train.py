@@ -32,7 +32,7 @@ wandb_project = 'owt'
 wandb_run_name = 'gpt2' # 'run' + str(time.time())
 # data
 dataset = 'openwebtext'
-gradient_accumulation_steps = 5 * 8 # used to simulate larger batch sizes
+gradient_accumulation_steps = 32 # used to simulate larger batch sizes
 batch_size = 32 # if gradient_accumulation_steps > 1, this is the micro-batch size
 block_size = 1024
 # model
@@ -56,9 +56,9 @@ min_lr = 6e-5
 
 backend = 'nccl'
 
-device = 'cpu'
+device = 'cuda:0'
 dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16'
-compile = False
+compile = True
 
 seed_offset = 0
 ddp_world_size = 1
@@ -79,14 +79,14 @@ ptdtype = {'float32': torch.float32,
 ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
 
 # poor man's data loader
-data_dir = '../data/audio_tokens'
+data_dir = '/media/apurva/data/indri_data/valid_audio/audio_tokens'
 files = glob.glob(f"{data_dir}/*.npy")
 
 def get_batch(split):
     data = np.load(random.choice(files))
     data = data.reshape((data.shape[0], -1))
-    ix = torch.randint(data.shape[1] - block_size, (batch_size,))
-    print(ix)
+    ix = torch.randint(data.shape[1] - block_size, (min(batch_size, len(data)),))
+    # print(ix)
 
     x = torch.stack([torch.from_numpy((data[d][i:i+block_size]).astype(np.int64)) for d, i in enumerate(ix)])
     y = torch.stack([torch.from_numpy((data[d][i+1:i+1+block_size]).astype(np.int64)) for d, i in enumerate(ix)])
@@ -202,9 +202,6 @@ while True:
     t0 = t1
     if iter_num % log_interval == 0:
         lossf = loss.item() * gradient_accumulation_steps
-        if local_iter_num >= 5:
-            mfu = raw_model.estimate_mfu(batch_size * gradient_accumulation_steps, dt)
-            running_mfu = mfu if running_mfu == -1.0 else 0.9*running_mfu + 0.1*mfu
         print(f"iter {iter_num}: loss {lossf:.4f}, time {dt*1000:.2f}ms, mfu {running_mfu*100:.2f}%")
     iter_num += 1
     local_iter_num += 1
