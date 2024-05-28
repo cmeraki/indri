@@ -8,19 +8,12 @@ from pathlib import Path
 import torchaudio
 import torch
 import glob
-import os
 from tqdm import tqdm
 from torch.utils.data import Dataset, DataLoader
+import uuid
 
 DEVICE = 'cpu'
 
-import numpy as np
-import os
-
-import numpy as np
-import os
-from torch.utils.data import Dataset
-import uuid
 
 class AudioDataset(Dataset):
     def __init__(self, audio_files, sample_rate, channels):
@@ -44,7 +37,8 @@ class AudioDataset(Dataset):
 
 def collate_fn(batch):
     waveforms, sample_rates = zip(*batch)
-    max_length = max(waveform.size(1) for waveform in waveforms)
+    sizes = [waveform.size(1) for waveform in waveforms]
+    max_length = max(sizes)
 
     padded_waveforms = []
     for waveform in waveforms:
@@ -53,28 +47,9 @@ def collate_fn(batch):
         padded_waveforms.append(padded_waveform)
 
     padded_waveforms = torch.stack(padded_waveforms)
-    return padded_waveforms, sample_rates
+    return padded_waveforms, sizes
 
-
-def get_audio_batches(files, batch_size, sample_rate, channels):
-    n_batches = math.ceil(len(files)//batch_size)
-
-    for batch_index in tqdm(range(n_batches)):
-        fnames = files[batch_index * batch_size: batch_index * batch_size + batch_size]
-        batch = []
-        size = math.inf
-        for fname in fnames:
-            wav, sr = torchaudio.load(fname)
-            wav = convert_audio(wav, sr, sample_rate, channels)
-            batch.append(wav)
-            size = min(size, wav.shape[1])
-
-        batch = [wav[:, 0:size] for wav in batch]
-        batch = torch.stack(batch, dim=0)
-        yield batch
-
-
-def get_model(model_sr=24, bandwidth=6):
+def get_model(model_sr=24, bandwidth=3):
     if model_sr == 24:
         model = EncodecModel.encodec_model_24khz()
     elif model_sr == 48:
@@ -85,6 +60,7 @@ def get_model(model_sr=24, bandwidth=6):
     model.set_target_bandwidth(bandwidth)
     model.zero_grad()
     return model
+
 
 def flatten_codebook(arr):
     # give a batch of audio tokens to flatten
@@ -98,7 +74,18 @@ def flatten_codebook(arr):
     flat_arr = arr.reshape(b, c*n, order='F')
     return flat_arr
 
-def encode(audio, outdir, batch_size=1, ):
+
+def add_start_tokens(arr, dtype):
+    start_token = -1
+    b = arr.shape[0]
+    start_tokens = [start_token] * b
+    start_tokens = np.asarray(start_tokens, dtype=dtype)
+    start_tokens = np.expand_dims(start_tokens, axis=-1)
+    arr = np.hstack([arr, start_tokens])
+    return arr
+
+
+def encode(files, outdir, batch_size=1, per_file_tokens=1000000):
     """
     Create large files in outdir with memmaps
     of shape [N, C, S].
@@ -110,6 +97,7 @@ def encode(audio, outdir, batch_size=1, ):
 
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True, parents=True)
+    dtype = np.int32
 
     model = get_model(bandwidth=3)
     model = model.to(DEVICE)
@@ -122,22 +110,31 @@ def encode(audio, outdir, batch_size=1, ):
 
     model = torch.compile(model)
 
-    for batch_index, (batch, sample_rates) in enumerate(tqdm(dataloader)):
+    from npds import NumpyDataset
+    ds = NumpyDataset(dir=outdir, samples_per_file=per_file_tokens, dtype=dtype)
+
+    for batch_index, (batch, sizes) in enumerate(tqdm(dataloader)):
         batch = batch.to(DEVICE)
         with torch.no_grad():
             encoded_frames = model.encode(batch)
 
         codes = torch.cat([encoded[0] for encoded in encoded_frames], dim=-1)
-        codes = codes.detach().cpu().numpy()
+        codes = codes.detach().cpu().numpy().astype(dtype=dtype)
 
+        codes = codes[:, 0:2, :]
+        codes = flatten_codebook(codes)
+        codes = add_start_tokens(codes, dtype=dtype)
+        codes = codes.reshape(-1)
 
-    fname = f"{outdir}/.npy"
-    np.save(fname, codes)
+        ds.write(codes)
+
+    ds.close()
 
 
 def get_next_filename(dir: Path):
     filename = f"{dir}/{str(uuid.uuid4())}"
     return filename
+
 
 if __name__ == '__main__':
     import argparse
@@ -149,5 +146,4 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     files = list(glob.glob(args.indir))
-    # encode(files, outdir=args.outdir, batch_size=args.batch_size)
-    get_next_filename(args.outdir)
+    encode(files, outdir=args.outdir, batch_size=args.batch_size)
