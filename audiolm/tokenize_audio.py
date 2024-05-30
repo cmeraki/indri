@@ -49,6 +49,7 @@ def collate_fn(batch):
     padded_waveforms = torch.stack(padded_waveforms)
     return padded_waveforms, sizes
 
+
 def get_model(model_sr=24, bandwidth=3):
     if model_sr == 24:
         model = EncodecModel.encodec_model_24khz()
@@ -94,7 +95,6 @@ def encode(files, outdir, batch_size=1, per_file_tokens=1000000):
     :param batch_size:
     :return:
     """
-
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True, parents=True)
     dtype = np.int32
@@ -121,10 +121,17 @@ def encode(files, outdir, batch_size=1, per_file_tokens=1000000):
         codes = torch.cat([encoded[0] for encoded in encoded_frames], dim=-1)
         codes = codes.detach().cpu().numpy().astype(dtype=dtype)
 
+        expected_lengths = np.ceil(np.asarray(sizes)/320).astype(int)
+
         codes = codes[:, 0:2, :]
+
+        for code, size in zip(codes, expected_lengths):
+            code[:, size:] = -2
+            code[:, size-1] = -1
+
         codes = flatten_codebook(codes)
-        codes = add_start_tokens(codes, dtype=dtype)
         codes = codes.reshape(-1)
+        codes = codes[codes != -2]
 
         ds.write(codes)
 
