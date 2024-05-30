@@ -13,7 +13,7 @@ from torch.utils.data import Dataset, DataLoader
 import uuid
 
 DEVICE = 'cpu'
-START_TOKEN = -1
+START_TOKEN = 0
 
 class AudioDataset(Dataset):
     def __init__(self, audio_files, sample_rate, channels):
