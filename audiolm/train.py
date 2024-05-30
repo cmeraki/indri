@@ -79,7 +79,7 @@ ptdtype = {'float32': torch.float32,
 ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
 
 # poor man's data loader
-data_dir = '/media/apurva/data/indri_data/valid_audio/audio_tokens'
+data_dir = '../data/audio_tokens'
 files = glob.glob(f"{data_dir}/*.npy")
 
 def get_batch(split):
