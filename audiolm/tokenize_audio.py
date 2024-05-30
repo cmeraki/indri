@@ -13,7 +13,7 @@ from torch.utils.data import Dataset, DataLoader
 import uuid
 
 DEVICE = 'cpu'
-
+START_TOKEN = -1
 
 class AudioDataset(Dataset):
     def __init__(self, audio_files, sample_rate, channels):
@@ -127,7 +127,7 @@ def encode(files, outdir, batch_size=1, per_file_tokens=1000000):
 
         for code, size in zip(codes, expected_lengths):
             code[:, size:] = -2
-            code[:, size-1] = -1
+            code[:, size-1] = START_TOKEN
 
         codes = flatten_codebook(codes)
         codes = codes.reshape(-1)
