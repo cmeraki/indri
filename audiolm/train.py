@@ -87,10 +87,8 @@ files = {'train': glob.glob(f"{data_dir}/*.npy"), 'val': glob.glob(f"{val_data_d
 
 def get_batch(split):
     data = np.load(random.choice(files[split]))
-    # data = data.reshape((data.shape[0], -1))
-    ix = torch.randint(data.shape[1] - block_size, (min(batch_size, len(data)),))
-    # print(ix)
-
+    ix = torch.randint(data.shape[0] - block_size, (min(batch_size, len(data)),))
+    
     x = torch.stack([torch.from_numpy((data[i:i+block_size]).astype(np.int16)) for d, i in enumerate(ix)])
     y = torch.stack([torch.from_numpy((data[i+1:i+1+block_size]).astype(np.int16)) for d, i in enumerate(ix)])
 
