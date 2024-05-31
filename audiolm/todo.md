@@ -3,7 +3,6 @@
 3. generation + sampling + inference
 4. setup wandb account
 5. setup eternal training
-
 8. next datasets -> 10k hours
 
 train : 

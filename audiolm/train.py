@@ -80,16 +80,19 @@ ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=
 
 # poor man's data loader
 data_dir = '../data/audio_tokens'
-files = glob.glob(f"{data_dir}/*.npy")
+val_data_dir = '../data/audio_token_val'
+
+files = {'train': glob.glob(f"{data_dir}/*.npy"), 'val': glob.glob(f"{val_data_dir}/*.npy")}
+
 
 def get_batch(split):
-    data = np.load(random.choice(files))
-    data = data.reshape((data.shape[0], -1))
+    data = np.load(random.choice(files[split]))
+    # data = data.reshape((data.shape[0], -1))
     ix = torch.randint(data.shape[1] - block_size, (min(batch_size, len(data)),))
     # print(ix)
 
-    x = torch.stack([torch.from_numpy((data[i:i+block_size]).astype(np.int64)) for d, i in enumerate(ix)])
-    y = torch.stack([torch.from_numpy((data[i+1:i+1+block_size]).astype(np.int64)) for d, i in enumerate(ix)])
+    x = torch.stack([torch.from_numpy((data[i:i+block_size]).astype(np.int16)) for d, i in enumerate(ix)])
+    y = torch.stack([torch.from_numpy((data[i+1:i+1+block_size]).astype(np.int16)) for d, i in enumerate(ix)])
 
     if device_type == 'cuda':
         x, y = x.pin_memory().to(device, non_blocking=True), y.pin_memory().to(device, non_blocking=True)
@@ -101,7 +104,7 @@ iter_num = 0
 best_val_loss = 1e9
 
 model_args = dict(n_layer=n_layer, n_head=n_head, n_embd=n_embd, block_size=block_size,
-                  bias=bias, vocab_size=8192, dropout=dropout)
+                  bias=bias, vocab_size=2048, dropout=dropout)
 
 gptconf = GPTConfig(**model_args)
 model = GPT(gptconf)

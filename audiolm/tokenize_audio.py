@@ -15,6 +15,7 @@ import uuid
 DEVICE = 'cpu'
 START_TOKEN = 0
 
+
 class AudioDataset(Dataset):
     def __init__(self, audio_files, sample_rate, channels):
         self.audio_files = audio_files
