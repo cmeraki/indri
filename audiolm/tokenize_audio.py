@@ -63,26 +63,25 @@ def get_model(model_sr=24, bandwidth=3):
     return model
 
 
+def codebook_encoding(arr):
+    c, n = arr.shape
+    i_values = np.arange(c) * 1024
+    arr += i_values.reshape(c, 1)
+    return arr
+
 def flatten_codebook(arr):
     # give a batch of audio tokens to flatten
     # new_tokenid = old_tokenid + 1024 * codebook_idx
-    assert len(arr.shape) == 3
-    assert arr.shape[1] < 8
+    assert len(arr.shape) == 2
+    assert arr.shape[0] < 8
 
-    b, c, n = arr.shape
-    i_values = np.arange(c) * 1024
-    arr += i_values.reshape(1, c, 1)
-    flat_arr = arr.reshape(b, c*n, order='F')
+    c, n = arr.shape
+    flat_arr = arr.reshape(c*n, order='F')
     return flat_arr
 
 
-def add_start_tokens(arr, dtype):
-    start_token = -1
-    b = arr.shape[0]
-    start_tokens = [start_token] * b
-    start_tokens = np.asarray(start_tokens, dtype=dtype)
-    start_tokens = np.expand_dims(start_tokens, axis=-1)
-    arr = np.hstack([arr, start_tokens])
+def add_start_token(arr):
+    arr = np.insert(arr, 0, START_TOKEN)
     return arr
 
 
@@ -124,15 +123,15 @@ def encode(files, outdir, batch_size=1, per_file_tokens=1000000):
         expected_lengths = np.ceil(np.asarray(sizes)/320).astype(int)
 
         codes = codes[:, 0:2, :]
-
+        new_codes = []
         for code, size in zip(codes, expected_lengths):
-            code[:, size:] = -2
-            code[:, size-1] = START_TOKEN
+            code = code[:, :size]
+            code = codebook_encoding(code)
+            code = flatten_codebook(code)
+            code = add_start_token(code)
+            new_codes.append(code)
 
-        codes = flatten_codebook(codes)
-        codes = codes.reshape(-1)
-        codes = codes[codes != -2]
-
+        codes = np.hstack(new_codes)
         ds.write(codes)
 
     ds.close()
