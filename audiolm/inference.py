@@ -39,9 +39,9 @@ def load_llm():
     from tqdm import tqdm
 
     num_samples = 10 # number of samples to draw
-    max_new_tokens = 1020 # number of tokens generated in each sample
+    max_new_tokens = 2040 # number of tokens generated in each sample
     temperature = 0.8 # 1.0 = no change, < 1.0 = less random, > 1.0 = more random, in predictions
-    top_k = 200 # retain only the top_k most likely tokens, clamp others to have 0 probability
+    top_k = 30 # retain only the top_k most likely tokens, clamp others to have 0 probability
     seed = 1337
     device = 'cuda' # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1', etc.
     dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16' # 'float32' or 'bfloat16' or 'float16'
@@ -57,7 +57,7 @@ def load_llm():
 
     # model
     # init from a model saved in a specific directory
-    ckpt_path = os.path.join('out', 'ckpt.pt')
+    ckpt_path = os.path.join('out', 'ckpt_2048.pt')
     checkpoint = torch.load(ckpt_path, map_location=device)
     gptconf = GPTConfig(**checkpoint['model_args'])
     model = GPT(gptconf)
@@ -76,7 +76,7 @@ def load_llm():
     # print(model)
     start_ids = [0, 11, 1213, 14, 1435, 124, 1223]
     x = (torch.tensor(start_ids, dtype=torch.long, device=device)[None, ...])
-    
+
     # run generation
     with torch.no_grad():
         with ctx:
