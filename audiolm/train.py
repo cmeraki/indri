@@ -20,7 +20,7 @@ from gpt2_model import GPTConfig, GPT
 # default config values designed to train a gpt2 (124M) on OpenWebText
 # I/O
 out_dir = 'out'
-eval_interval = 2000
+eval_interval = 200
 log_interval = 1
 eval_iters = 200
 eval_only = False # if True, script exits right after the first eval
@@ -32,8 +32,8 @@ wandb_project = 'owt'
 wandb_run_name = 'gpt2' # 'run' + str(time.time())
 # data
 dataset = 'openwebtext'
-gradient_accumulation_steps = 32 # used to simulate larger batch sizes
-batch_size = 32 # if gradient_accumulation_steps > 1, this is the micro-batch size
+gradient_accumulation_steps = 16 # used to simulate larger batch sizes
+batch_size = 128 # if gradient_accumulation_steps > 1, this is the micro-batch size
 block_size = 1024
 # model
 n_layer = 8
@@ -80,7 +80,7 @@ ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=
 
 # poor man's data loader
 data_dir = '../data/audio_tokens'
-val_data_dir = '../data/audio_token_val'
+val_data_dir = '../data/audio_tokens_val'
 
 files = {'train': glob.glob(f"{data_dir}/*.npy"), 'val': glob.glob(f"{val_data_dir}/*.npy")}
 
@@ -89,8 +89,8 @@ def get_batch(split):
     data = np.load(random.choice(files[split]))
     ix = torch.randint(data.shape[0] - block_size, (min(batch_size, len(data)),))
     
-    x = torch.stack([torch.from_numpy((data[i:i+block_size]).astype(np.int16)) for d, i in enumerate(ix)])
-    y = torch.stack([torch.from_numpy((data[i+1:i+1+block_size]).astype(np.int16)) for d, i in enumerate(ix)])
+    x = torch.stack([torch.from_numpy((data[i:i+block_size]).astype(np.int64)) for d, i in enumerate(ix)])
+    y = torch.stack([torch.from_numpy((data[i+1:i+1+block_size]).astype(np.int64)) for d, i in enumerate(ix)])
 
     if device_type == 'cuda':
         x, y = x.pin_memory().to(device, non_blocking=True), y.pin_memory().to(device, non_blocking=True)
@@ -144,7 +144,6 @@ def get_lr(it):
 
 
 X, Y = get_batch('train')
-
 print(X.shape, Y.shape)
 
 t0 = time.time()

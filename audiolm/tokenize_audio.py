@@ -1,4 +1,6 @@
+import os
 import math
+import random
 
 import numpy as np
 from encodec import EncodecModel
@@ -12,8 +14,24 @@ from tqdm import tqdm
 from torch.utils.data import Dataset, DataLoader
 import uuid
 
-DEVICE = 'cpu'
+DEVICE = 'cuda:0'
 START_TOKEN = 0
+
+
+def find_audio_files(folder):
+    # Define the file extensions to search for
+    audio_extensions = ('.mp3', '.flac', '.wav', '.ogg')
+
+    # List to store the paths of found audio files
+    audio_files = []
+
+    # Walk through the directory and its subdirectories
+    for root, dirs, files in os.walk(folder):
+        for file in files:
+            if file.lower().endswith(audio_extensions):
+                audio_files.append(os.path.join(root, file))
+
+    return audio_files
 
 
 class AudioDataset(Dataset):
@@ -86,6 +104,7 @@ def add_start_token(arr):
     return arr
 
 
+@torch.inference_mode()
 def encode(files, outdir, batch_size=1, per_file_tokens=1000000):
     """
     Create large files in outdir with memmaps
@@ -98,6 +117,11 @@ def encode(files, outdir, batch_size=1, per_file_tokens=1000000):
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True, parents=True)
     dtype = np.int32
+
+    # torch.backends.cudnn.benchmark = True
+    torch.backends.cuda.matmul.allow_tf32 = True  # allow tf32 on matmul
+    torch.backends.cudnn.allow_tf32 = True  # allow tf32 on cudnn
+    torch.amp.autocast(device_type='cuda', dtype='bfloat16')
 
     model = get_model(bandwidth=3)
     model = model.to(DEVICE)
@@ -115,8 +139,7 @@ def encode(files, outdir, batch_size=1, per_file_tokens=1000000):
 
     for batch_index, (batch, sizes) in enumerate(tqdm(dataloader)):
         batch = batch.to(DEVICE)
-        with torch.no_grad():
-            encoded_frames = model.encode(batch)
+        encoded_frames = model.encode(batch)
 
         codes = torch.cat([encoded[0] for encoded in encoded_frames], dim=-1)
         codes = codes.detach().cpu().numpy().astype(dtype=dtype)
@@ -133,6 +156,7 @@ def encode(files, outdir, batch_size=1, per_file_tokens=1000000):
             new_codes.append(code)
 
         codes = np.hstack(new_codes)
+
         ds.write(codes)
 
     ds.close()
@@ -152,5 +176,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    files = list(glob.glob(args.indir))
+    # files = list(glob.glob(args.indir))
+    files = find_audio_files(args.indir)
+    print(random.sample(files, 10))
     encode(files, outdir=args.outdir, batch_size=args.batch_size)
