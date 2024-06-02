@@ -33,8 +33,8 @@ wandb_run_name = 'gpt2' # 'run' + str(time.time())
 # data
 dataset = 'openwebtext'
 gradient_accumulation_steps = 16 # used to simulate larger batch sizes
-batch_size = 128 # if gradient_accumulation_steps > 1, this is the micro-batch size
-block_size = 1024
+batch_size = 64 # if gradient_accumulation_steps > 1, this is the micro-batch size
+block_size = 2048
 # model
 n_layer = 8
 n_head = 8
@@ -171,7 +171,7 @@ while True:
                     'best_val_loss': best_val_loss,
                 }
                 print(f"saving checkpoint to {out_dir}")
-                torch.save(checkpoint, os.path.join(out_dir, 'ckpt.pt'))
+                torch.save(checkpoint, os.path.join(out_dir, 'ckpt_2048.pt'))
 
     if iter_num == 0 and eval_only:
         break

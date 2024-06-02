@@ -1,15 +1,12 @@
-1. create val set out if librispeech dev
-2. tokens for all
-3. generation + sampling + inference
-4. setup wandb account
-5. setup eternal training
-8. next datasets -> 10k hours
+D 1. create val set out if librispeech dev
+D 2. tokens for all
+D 3. generation + sampling + inference 
+4. cleanup training script
+W 5. setup wandb account
+6. setup eternal training
+7. next datasets -> 10k hours
 
-train : 
-1M tokens => 4s
-10B tokens => 40000s => 11 hours => 10k steps
-val : 
-10M tokens => 40s
-
-train params :
-1. seq length = 4096
+3-10/6
+1. continuous inference : listen 1/2 length, generate rest, repeat
+2. sample of speech, continue speaking
+3. 10B training run on jarvis, decide dataset
