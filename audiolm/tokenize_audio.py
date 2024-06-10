@@ -178,5 +178,6 @@ if __name__ == '__main__':
 
     # files = list(glob.glob(args.indir))
     files = find_audio_files(args.indir)
-    print(random.sample(files, 10))
+    # print(files)
+    # print(random.sample(files, 2))
     encode(files, outdir=args.outdir, batch_size=args.batch_size)
