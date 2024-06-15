@@ -1,22 +1,24 @@
 # Load model directly
 import numpy as np
 import torch
-from transformers import AutoProcessor, AutoModel, HubertModel, Wav2Vec2Processor
+from transformers import AutoProcessor, AutoModel, HubertModel, Wav2Vec2Processor, Wav2Vec2FeatureExtractor
 import torchaudio
 from encodec.utils import convert_audio
 from torch.nn import functional as F
 
-x, sr = torchaudio.load('/home/apurva/projects/indri/data/audio/0028_portuguese_nonscripted_2.wav')
-waveform = convert_audio(x,
+waveform, sr = torchaudio.load('data/audio_files/174-84280-0000.flac')
+
+waveform = convert_audio(waveform,
                          sr,
                          target_sr=16000,
                          target_channels=1)
 
 # waveform = F.layer_norm(waveform, waveform.shape)
 
-# processor = AutoProcessor.from_pretrained("utter-project/mHuBERT-147")
+processor = Wav2Vec2FeatureExtractor.from_pretrained("utter-project/mHuBERT-147")
 model = AutoModel.from_pretrained("utter-project/mHuBERT-147")
 
+waveform = processor(waveform, sampling_rate=16000, return_tensors='pt').input_values[0]
 # y = np.random.random(size=(1, 100, 768))
 
 from tqdm import tqdm
@@ -48,7 +50,7 @@ def get_centroids_index(xq, index, index_ivf: IndexIVFFlat):
 # print(centroid_index)
 
 
-for layer_idx in range(12, 1, -1):
+for layer_idx in range(12, -1, -1):
     model.encoder.layers = model.encoder.layers[0:layer_idx]
 
     y = model.forward(waveform)
