@@ -1,38 +1,14 @@
-import os
-import math
-import random
-
 import numpy as np
-from encodec import EncodecModel
-from encodec.utils import convert_audio, save_audio
+from encodec.utils import convert_audio
 from pathlib import Path
 
 import torchaudio
 import torch
-import glob
 from tqdm import tqdm
 from torch.utils.data import Dataset, DataLoader
 import uuid
 
 DEVICE = 'cuda:0'
-START_TOKEN = 0
-
-
-def find_audio_files(folder):
-    # Define the file extensions to search for
-    audio_extensions = ('.mp3', '.flac', '.wav', '.ogg')
-
-    # List to store the paths of found audio files
-    audio_files = []
-
-    # Walk through the directory and its subdirectories
-    for root, dirs, files in os.walk(folder):
-        for file in files:
-            if file.lower().endswith(audio_extensions):
-                audio_files.append(os.path.join(root, file))
-
-    return audio_files
-
 
 class AudioDataset(Dataset):
     def __init__(self, audio_files, sample_rate, channels):
@@ -51,11 +27,11 @@ class AudioDataset(Dataset):
                                  target_sr=self.sample_rate,
                                  target_channels=self.channels)
 
-        return waveform, sr
+        return waveform
 
 
 def collate_fn(batch):
-    waveforms, sample_rates = zip(*batch)
+    waveforms = zip(*batch)
     sizes = [waveform.size(1) for waveform in waveforms]
     max_length = max(sizes)
 
@@ -67,41 +43,6 @@ def collate_fn(batch):
 
     padded_waveforms = torch.stack(padded_waveforms)
     return padded_waveforms, sizes
-
-
-def get_model(model_sr=24, bandwidth=3):
-    if model_sr == 24:
-        model = EncodecModel.encodec_model_24khz()
-    elif model_sr == 48:
-        model = EncodecModel.encodec_model_48khz()
-    else:
-        raise "Unknown model sample rate, chose from 24 and 48"
-
-    model.set_target_bandwidth(bandwidth)
-    model.zero_grad()
-    return model
-
-
-def codebook_encoding(arr):
-    c, n = arr.shape
-    i_values = np.arange(c) * 1024
-    arr += i_values.reshape(c, 1)
-    return arr
-
-def flatten_codebook(arr):
-    # give a batch of audio tokens to flatten
-    # new_tokenid = old_tokenid + 1024 * codebook_idx
-    assert len(arr.shape) == 2
-    assert arr.shape[0] < 8
-
-    c, n = arr.shape
-    flat_arr = arr.reshape(c*n, order='F')
-    return flat_arr
-
-
-def add_start_token(arr):
-    arr = np.insert(arr, 0, START_TOKEN)
-    return arr
 
 
 @torch.inference_mode()
@@ -123,8 +64,6 @@ def encode(files, outdir, batch_size=1, per_file_tokens=1000000):
     torch.backends.cudnn.allow_tf32 = True  # allow tf32 on cudnn
     torch.amp.autocast(device_type='cuda', dtype='bfloat16')
 
-    model = get_model(bandwidth=3)
-    model = model.to(DEVICE)
     dataset = AudioDataset(files, sample_rate=24000, channels=1)
     dataloader = DataLoader(dataset,
                             batch_size=batch_size,
@@ -132,30 +71,12 @@ def encode(files, outdir, batch_size=1, per_file_tokens=1000000):
                             collate_fn=collate_fn,
                             num_workers=4)
 
-    model = torch.compile(model)
 
     from npds import NumpyDataset
     ds = NumpyDataset(dir=outdir, samples_per_file=per_file_tokens, dtype=dtype)
 
     for batch_index, (batch, sizes) in enumerate(tqdm(dataloader)):
         batch = batch.to(DEVICE)
-        encoded_frames = model.encode(batch)
-
-        codes = torch.cat([encoded[0] for encoded in encoded_frames], dim=-1)
-        codes = codes.detach().cpu().numpy().astype(dtype=dtype)
-
-        expected_lengths = np.ceil(np.asarray(sizes)/320).astype(int)
-
-        codes = codes[:, 0:2, :]
-        new_codes = []
-        for code, size in zip(codes, expected_lengths):
-            code = code[:, :size]
-            code = codebook_encoding(code)
-            code = flatten_codebook(code)
-            code = add_start_token(code)
-            new_codes.append(code)
-
-        codes = np.hstack(new_codes)
 
         ds.write(codes)
 

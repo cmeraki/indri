@@ -1,5 +1,4 @@
 import torch
-import torchaudio
 import faiss
 
 import numpy as np
@@ -13,6 +12,7 @@ import bark
 
 SEMANTIC = 'semantic'
 ACOUSTIC = 'acoustic'
+
 
 class HubertTokenizer:
     def __init__(self, pad_token=None, device='cpu'):
@@ -29,7 +29,7 @@ class HubertTokenizer:
 
         self.hubert_model.to(device)
 
-        faiss_index_file = hf_hub_download("utter-project/mHuBERT-147",
+        faiss_index_file = hf_hub_download(repo_id="utter-project/mHuBERT-147",
                                            filename='mhubert147_faiss.index')
 
         self.index = faiss.read_index(faiss_index_file)
@@ -92,9 +92,13 @@ class EncodecTokenizer:
         Encodec returns n_codebooks per token
         Here we flatten and return them as separate tokens
         Decode will decode this stream back to audio
+
+        waveforms is a list of mono audio arrays.
+        Multichannel is not supported
         """
 
         padded_waveforms, sizes = pad_batch(waveforms)
+        padded_waveforms = torch.unsqueeze(padded_waveforms, 1)
         batch = padded_waveforms.to(self.device)
         encoded_frames = self.model.encode(batch)
 
@@ -113,9 +117,6 @@ class EncodecTokenizer:
         codes = np.hstack(new_codes)
         return codes
 
-    def decode(self):
-        pass
-
     def deserialize_tokens(self, tokens):
         # serial token shape = n,1
         # deserialize to (codebook, tokens)
@@ -131,22 +132,22 @@ class EncodecTokenizer:
                   splits]
         return splits
 
-    def decode_to_audio(self, tokens):
-        model = self.load_model(bandwidth=3, device=self.device)
+    def decode(self, tokens):
+        model = self.load_model(bandwidth=6, device=self.device)
         tokens = self.deserialize_tokens(tokens)
         token_single = np.expand_dims(tokens[0], axis=0)
         good_audio = bark.api.generate_fine(x_coarse_gen=token_single[0, 0:2, :], silent=False)
         good_audio = np.expand_dims(good_audio, axis=0)
         good_audio = torch.from_numpy(good_audio)
         wav = model.decode([(good_audio, None)])
-
+        wav = wav.detach()
         return wav
 
-    def codebook_encoding(self, arr):
+    def codebook_encoding(self, arr: torch.tensor):
         c, n = arr.shape
         i_values = np.arange(c) * self.per_codebook_size
         arr += i_values.reshape(c, 1)
-        flat_arr = arr.reshape(c * n, order='F')
+        flat_arr = arr.t().contiguous().view(c * n)
         return flat_arr
 
     def add_start_token(self, arr):
@@ -160,11 +161,18 @@ if __name__ == '__main__':
     parser.add_argument('--audio', type=str, required=True, help='Input directory for audio files.')
     args = parser.parse_args()
 
-    tokenizer = HubertTokenizer()
-    # tokenizer = EncodecTokenizer()
+    tokenizer = EncodecTokenizer()
 
-    from audio_utils import read_audio_file
+    from audio_utils import read_audio_file, save_audio
     waveform = read_audio_file(args.audio, sample_rate=tokenizer.audio_sample_rate)
 
+    print(waveform.shape)
+
     tokens = tokenizer.encode(waveform)
-    print(tokens)
+    print(tokens.shape)
+    #
+    # waveform = tokenizer.decode(tokens)[0]
+    # print(waveform)
+    # save_audio(wav=waveform,
+    #            path='test.wav',
+    #            sample_rate=tokenizer.audio_sample_rate)
