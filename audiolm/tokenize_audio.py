@@ -5,8 +5,7 @@ from pathlib import Path
 import torchaudio
 import torch
 from tqdm import tqdm
-from torch.utils.data import Dataset, DataLoader
-import uuid
+from torch.utils.data import Dataset
 
 DEVICE = 'cuda:0'
 
@@ -28,17 +27,17 @@ class AudioDataset(Dataset):
                                  target_sr=self.sample_rate,
                                  target_channels=1)
 
-
         tokens = self.tokenizer.encode(waveform)
         return tokens, audio_path
 
 
 def collate_fn(batch):
-    return batch
+    tokens, audio_path = zip(*batch)
+    return tokens, audio_path
 
 
 @torch.inference_mode()
-def encode(files, outdir, batch_size=1, type='acoustic'):
+def encode(files, outdir, type='acoustic'):
     """
     Create large files in outdir with memmaps
     of shape [N, C, S].
@@ -47,29 +46,29 @@ def encode(files, outdir, batch_size=1, type='acoustic'):
     :param batch_size:
     :return:
     """
+
+    torch.backends.cuda.matmul.allow_tf32 = True  # allow tf32 on matmul
+    torch.backends.cudnn.allow_tf32 = True  # allow tf32 on cudnn
+    torch.amp.autocast(device_type='cuda', dtype='bfloat16')
+
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True, parents=True)
 
-    from audio_tokenizers import HubertTokenizer, EncodecTokenizer
-    tokenizers = [HubertTokenizer(), EncodecTokenizer(n_codebooks=2)]
-    tokenizers = {i.type: i for i in tokenizers}
-
-    tokenizer = tokenizers[type]
+    tokenizer = None
+    from audio_tokenizers import HubertTokenizer, EncodecTokenizer, SEMANTIC, ACOUSTIC
+    if type == SEMANTIC:
+        tokenizer = HubertTokenizer(device=DEVICE)
+    if type == ACOUSTIC:
+        tokenizer = EncodecTokenizer(n_codebooks=8, device=DEVICE)
 
     dataset = AudioDataset(files, sample_rate=tokenizer.audio_sample_rate, tokenizer=tokenizer)
-    dataloader = DataLoader(dataset,
-                            batch_size=batch_size,
-                            shuffle=False,
-                            collate_fn=collate_fn,
-                            num_workers=4)
 
-    for batch_index, batch in enumerate(tqdm(dataloader)):
-        print([e.shape for e in batch])
+    for file_index in tqdm(range(len(dataset))):
+        tokens, path = dataset[file_index]
+        path = Path(path)
+        fname = path.name
+        np.save(outdir / fname, tokens)
 
-
-def get_next_filename(dir: Path):
-    filename = f"{dir}/{str(uuid.uuid4())}"
-    return filename
 
 
 if __name__ == '__main__':
@@ -77,7 +76,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Encode audio files.')
     parser.add_argument('--indir', type=str, required=True, help='Input directory for audio files.')
     parser.add_argument('--outdir', type=str, required=True, help='Output directory for encoded audio.')
-    parser.add_argument('--batch_size', type=int, default=2, help='Batch size for encoding.')
+    parser.add_argument('--type', type=str, required=True, help='Type of token semantic/acoustic')
 
     args = parser.parse_args()
 
@@ -86,4 +85,4 @@ if __name__ == '__main__':
     files = find_audio_files(args.indir)
     # print(files)
     # print(random.sample(files, 2))
-    encode(files, outdir=args.outdir, batch_size=args.batch_size)
+    encode(files=files, outdir=args.outdir, type=args.type)

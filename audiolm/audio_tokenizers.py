@@ -42,9 +42,12 @@ class HubertTokenizer:
         Classify embeddings into one of the pre-prepared 1000 clusters
         """
         # waveforms = self.processor(waveforms, sampling_rate=self.input_sr, return_tensors='pt').input_values
+        waveforms = waveforms.to(self.device)
         embeddings = self.hubert_model.forward(waveforms)
         embeddings = embeddings.last_hidden_state.detach()[0]
+        embeddings = embeddings.detach().cpu()
         cluster_ids = self.assign_clusters(embeddings)
+        cluster_ids = cluster_ids.reshape(-1)
         return cluster_ids
 
     def assign_clusters(self, embeddings):
@@ -72,7 +75,6 @@ class EncodecTokenizer:
                                  np.log2(self.per_codebook_size)) # 10bit per token
                                  / 1000)  # 1.5kbps
 
-
         self.device = device
         self.model = self.load_model(self.output_bandwidth, self.device)
 
@@ -86,7 +88,7 @@ class EncodecTokenizer:
             model = torch.compile(model)
         return model
 
-    def encode(self, waveforms: list):
+    def encode(self, waveform):
         """
         Encodec returns n_codebooks per token
         Here we flatten and return them as separate tokens
@@ -97,14 +99,13 @@ class EncodecTokenizer:
         """
 
         # padded_waveforms, sizes = pad_batch(waveforms)
-        waveforms = torch.unsqueeze(waveforms, 1)
-        waveforms.to(self.device)
-        encoded_frames = self.model.encode(waveforms)
+        waveform = torch.unsqueeze(waveform, 1)
+        waveform = waveform.to(self.device)
+        encoded_frames = self.model.encode(waveform)
 
         codes = torch.cat([encoded[0] for encoded in encoded_frames], dim=-1)
-        codes = codes.detach()[0]
-
-        codes = self.codebook_encoding(codes)
+        codes = codes.detach()[0].cpu()
+        # codes = self.codebook_encoding(codes)
         # codes = self.add_start_token(codes)
         return codes
 
