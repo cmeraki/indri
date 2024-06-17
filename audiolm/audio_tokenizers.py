@@ -15,19 +15,19 @@ ACOUSTIC = 'acoustic'
 
 
 class HubertTokenizer:
-    def __init__(self, pad_token=None, device='cpu'):
+    def __init__(self, device='cpu'):
         self.type = SEMANTIC
-        self.vocab_size = 1000 + 1 #pad token
+        self.vocab_size = 1000
         self.token_sample_rate = 50
         self.audio_sample_rate = 16000
 
         self.device = device
-        self.pad_token = pad_token if pad_token else self.vocab_size
 
         self.processor = Wav2Vec2FeatureExtractor.from_pretrained("utter-project/mHuBERT-147")
         self.hubert_model = HubertModel.from_pretrained("utter-project/mHuBERT-147")
 
         self.hubert_model.to(device)
+        self.hubert_model = torch.compile(self.hubert_model)
 
         faiss_index_file = hf_hub_download(repo_id="utter-project/mHuBERT-147",
                                            filename='mhubert147_faiss.index')
@@ -58,21 +58,20 @@ class HubertTokenizer:
 
 
 class EncodecTokenizer:
-    def __init__(self, pad_token=None, device='cpu', n_codebooks=2):
+    def __init__(self, device='cpu', n_codebooks=2):
         self.type = ACOUSTIC
 
         self.audio_sample_rate = 24000
         self.token_sample_rate = 75
         self.n_codebooks = n_codebooks
         self.per_codebook_size = 1024
-        self.vocab_size = self.n_codebooks * self.per_codebook_size + 1
+        self.vocab_size = self.n_codebooks * self.per_codebook_size
 
         self.output_bandwidth = ((self.token_sample_rate * # 75Hz
                                  self.n_codebooks * # 2 codebooks
                                  np.log2(self.per_codebook_size)) # 10bit per token
                                  / 1000)  # 1.5kbps
 
-        self.pad_token = pad_token if pad_token else self.vocab_size
 
         self.device = device
         self.model = self.load_model(self.output_bandwidth, self.device)
@@ -97,24 +96,16 @@ class EncodecTokenizer:
         Multichannel is not supported
         """
 
-        padded_waveforms, sizes = pad_batch(waveforms)
-        padded_waveforms = torch.unsqueeze(padded_waveforms, 1)
-        batch = padded_waveforms.to(self.device)
-        encoded_frames = self.model.encode(batch)
+        # padded_waveforms, sizes = pad_batch(waveforms)
+        waveforms = torch.unsqueeze(waveforms, 1)
+        waveforms.to(self.device)
+        encoded_frames = self.model.encode(waveforms)
 
         codes = torch.cat([encoded[0] for encoded in encoded_frames], dim=-1)
-        codes = codes.detach()
+        codes = codes.detach()[0]
 
-        expected_lengths = np.ceil(np.asarray(sizes) / (self.audio_sample_rate/self.token_sample_rate)).astype(int)
-
-        new_codes = []
-        for code, size in zip(codes, expected_lengths):
-            code = code[:, :size]
-            code = self.codebook_encoding(code)
-            code = self.add_start_token(code)
-            new_codes.append(code)
-
-        codes = np.hstack(new_codes)
+        codes = self.codebook_encoding(codes)
+        # codes = self.add_start_token(codes)
         return codes
 
     def deserialize_tokens(self, tokens):
@@ -163,14 +154,21 @@ if __name__ == '__main__':
 
     tokenizer = EncodecTokenizer()
 
+    # tokenizer = HubertTokenizer()
+
+    from tqdm import tqdm
     from audio_utils import read_audio_file, save_audio
+
     waveform = read_audio_file(args.audio, sample_rate=tokenizer.audio_sample_rate)
+    waveform = waveform[0:1, :tokenizer.audio_sample_rate*5]
 
     print(waveform.shape)
 
-    tokens = tokenizer.encode(waveform)
-    print(tokens.shape)
-    #
+    for i in tqdm(range(1000)):
+        tokens = tokenizer.encode(waveform)
+        print(tokens.shape)
+
+
     # waveform = tokenizer.decode(tokens)[0]
     # print(waveform)
     # save_audio(wav=waveform,

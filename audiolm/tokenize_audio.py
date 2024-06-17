@@ -10,11 +10,12 @@ import uuid
 
 DEVICE = 'cuda:0'
 
+
 class AudioDataset(Dataset):
-    def __init__(self, audio_files, sample_rate, channels):
+    def __init__(self, audio_files, sample_rate, tokenizer):
         self.audio_files = audio_files
         self.sample_rate = sample_rate
-        self.channels = channels
+        self.tokenizer = tokenizer
 
     def __len__(self):
         return len(self.audio_files)
@@ -25,28 +26,19 @@ class AudioDataset(Dataset):
         waveform = convert_audio(waveform,
                                  sr,
                                  target_sr=self.sample_rate,
-                                 target_channels=self.channels)
+                                 target_channels=1)
 
-        return waveform
+
+        tokens = self.tokenizer.encode(waveform)
+        return tokens, audio_path
 
 
 def collate_fn(batch):
-    waveforms = zip(*batch)
-    sizes = [waveform.size(1) for waveform in waveforms]
-    max_length = max(sizes)
-
-    padded_waveforms = []
-    for waveform in waveforms:
-        padding = max_length - waveform.size(1)
-        padded_waveform = torch.nn.functional.pad(waveform, (-1, padding))
-        padded_waveforms.append(padded_waveform)
-
-    padded_waveforms = torch.stack(padded_waveforms)
-    return padded_waveforms, sizes
+    return batch
 
 
 @torch.inference_mode()
-def encode(files, outdir, batch_size=1, per_file_tokens=1000000):
+def encode(files, outdir, batch_size=1, type='acoustic'):
     """
     Create large files in outdir with memmaps
     of shape [N, C, S].
@@ -57,30 +49,22 @@ def encode(files, outdir, batch_size=1, per_file_tokens=1000000):
     """
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True, parents=True)
-    dtype = np.int32
 
-    # torch.backends.cudnn.benchmark = True
-    torch.backends.cuda.matmul.allow_tf32 = True  # allow tf32 on matmul
-    torch.backends.cudnn.allow_tf32 = True  # allow tf32 on cudnn
-    torch.amp.autocast(device_type='cuda', dtype='bfloat16')
+    from audio_tokenizers import HubertTokenizer, EncodecTokenizer
+    tokenizers = [HubertTokenizer(), EncodecTokenizer(n_codebooks=2)]
+    tokenizers = {i.type: i for i in tokenizers}
 
-    dataset = AudioDataset(files, sample_rate=24000, channels=1)
+    tokenizer = tokenizers[type]
+
+    dataset = AudioDataset(files, sample_rate=tokenizer.audio_sample_rate, tokenizer=tokenizer)
     dataloader = DataLoader(dataset,
                             batch_size=batch_size,
                             shuffle=False,
                             collate_fn=collate_fn,
                             num_workers=4)
 
-
-    from npds import NumpyDataset
-    ds = NumpyDataset(dir=outdir, samples_per_file=per_file_tokens, dtype=dtype)
-
-    for batch_index, (batch, sizes) in enumerate(tqdm(dataloader)):
-        batch = batch.to(DEVICE)
-
-        ds.write(codes)
-
-    ds.close()
+    for batch_index, batch in enumerate(tqdm(dataloader)):
+        print([e.shape for e in batch])
 
 
 def get_next_filename(dir: Path):
@@ -97,6 +81,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
+    from audio_utils import find_audio_files
     # files = list(glob.glob(args.indir))
     files = find_audio_files(args.indir)
     # print(files)
