@@ -135,9 +135,10 @@ class EncodecTokenizer:
         wav = wav.detach()
         return wav
 
-    def codebook_encoding(self, arr: torch.tensor):
+    @staticmethod
+    def codebook_encoding(arr: torch.tensor, per_codebook_size: int):
         c, n = arr.shape
-        i_values = np.arange(c) * self.per_codebook_size
+        i_values = np.arange(c) * per_codebook_size
         arr += i_values.reshape(c, 1)
         flat_arr = arr.t().contiguous().view(c * n)
         return flat_arr

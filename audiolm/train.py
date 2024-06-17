@@ -8,6 +8,7 @@ import time
 import math
 import pickle
 from contextlib import nullcontext
+from datalib import get_batch
 
 import numpy as np
 import torch
@@ -15,6 +16,8 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed import init_process_group, destroy_process_group
 
 from gpt2_model import GPTConfig, GPT
+
+from tqdm import tqdm
 
 # -----------------------------------------------------------------------------
 # default config values designed to train a gpt2 (124M) on OpenWebText
@@ -34,10 +37,10 @@ wandb_run_name = 'gpt2' # 'run' + str(time.time())
 dataset = 'openwebtext'
 gradient_accumulation_steps = 16 # used to simulate larger batch sizes
 batch_size = 64 # if gradient_accumulation_steps > 1, this is the micro-batch size
-block_size = 2048
+block_size = 1024
 # model
-n_layer = 8
-n_head = 8
+n_layer = 12
+n_head = 12
 n_embd = 768
 dropout = 0.0 # for pretraining 0 is good, for finetuning try 0.1+
 bias = False # do we use bias inside LayerNorm and Linear layers?
@@ -78,31 +81,11 @@ ptdtype = {'float32': torch.float32,
 
 ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
 
-# poor man's data loader
-data_dir = '../data/audio_tokens'
-val_data_dir = '../data/audio_tokens_val'
-
-files = {'train': glob.glob(f"{data_dir}/*.npy"), 'val': glob.glob(f"{val_data_dir}/*.npy")}
-
-
-def get_batch(split):
-    data = np.load(random.choice(files[split]))
-    ix = torch.randint(data.shape[0] - block_size, (min(batch_size, len(data)),))
-    
-    x = torch.stack([torch.from_numpy((data[i:i+block_size]).astype(np.int64)) for d, i in enumerate(ix)])
-    y = torch.stack([torch.from_numpy((data[i+1:i+1+block_size]).astype(np.int64)) for d, i in enumerate(ix)])
-
-    if device_type == 'cuda':
-        x, y = x.pin_memory().to(device, non_blocking=True), y.pin_memory().to(device, non_blocking=True)
-    else:
-        x, y = x.to(device), y.to(device)
-    return x, y
-
 iter_num = 0
 best_val_loss = 1e9
 
 model_args = dict(n_layer=n_layer, n_head=n_head, n_embd=n_embd, block_size=block_size,
-                  bias=bias, vocab_size=2048, dropout=dropout)
+                  bias=bias, vocab_size=3072, dropout=dropout)
 
 gptconf = GPTConfig(**model_args)
 model = GPT(gptconf)
@@ -124,7 +107,7 @@ def estimate_loss():
     for split in ['train', 'val']:
         losses = torch.zeros(eval_iters)
         for k in range(eval_iters):
-            X, Y = get_batch(split)
+            X, Y = get_batch(split, block_size=block_size, batch_size=batch_size, device=device)
             with ctx:
                 logits, loss = model(X, Y)
             losses[k] = loss.item()
@@ -143,14 +126,15 @@ def get_lr(it):
     return min_lr + coeff * (learning_rate - min_lr)
 
 
-X, Y = get_batch('train')
+X, Y = get_batch('train', block_size=block_size, batch_size=batch_size, device=device)
 print(X.shape, Y.shape)
 
 t0 = time.time()
 local_iter_num = 0 # number of iterations in the lifetime of this process
 raw_model = model # unwrap DDP container if needed
 running_mfu = -1.0
-while True:
+
+for iter_num in tqdm(range(max_iters)):
     # determine and set the learning rate for this iteration
     lr = get_lr(iter_num) if decay_lr else learning_rate
     for param_group in optimizer.param_groups:
@@ -183,7 +167,7 @@ while True:
             logits, loss = model(X, Y)
             loss = loss / gradient_accumulation_steps # scale the loss to account for gradient accumulation
         # immediately async prefetch next batch while model is doing the forward pass on the GPU
-        X, Y = get_batch('train')
+        X, Y = get_batch('train', block_size=block_size, batch_size=batch_size, device=device)
         # backward pass, with gradient scaling if training in fp16
         scaler.scale(loss).backward()
     # clip the gradient
@@ -205,6 +189,3 @@ while True:
         print(f"iter {iter_num}: loss {lossf:.4f}, time {dt*1000:.2f}ms, mfu {running_mfu*100:.2f}%")
     iter_num += 1
     local_iter_num += 1
-
-    if iter_num > max_iters:
-        break

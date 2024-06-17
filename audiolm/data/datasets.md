@@ -23,3 +23,5 @@ https://huggingface.co/datasets/pkufool/libriheavy
 https://github.com/facebookresearch/libri-light/tree/main/data_preparation
 https://huggingface.co/datasets/facebook/multilingual_librispeech
 https://www.openslr.org/resources.php
+
+https://huggingface.co/datasets/capleaf/viVoice
