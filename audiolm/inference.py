@@ -34,6 +34,7 @@ def decode_to_audio(tokens):
 
     return wav
 
+
 def load_llm():
     from gpt2_model import GPT, GPTConfig
     from contextlib import nullcontext

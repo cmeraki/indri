@@ -19,6 +19,7 @@ def get_tokenizer(type):
     tokenizer = None
     if type == SEMANTIC:
         tokenizer = HubertTokenizer(device=DEVICE)
+
     if type == ACOUSTIC:
         tokenizer = EncodecTokenizer(n_codebooks=8, device=DEVICE)
 

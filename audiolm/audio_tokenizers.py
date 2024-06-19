@@ -7,8 +7,10 @@ from huggingface_hub import hf_hub_download
 from encodec import EncodecModel
 from transformers import HubertModel, Wav2Vec2FeatureExtractor
 
+import joblib
 from audio_utils import pad_batch
 import bark
+from itertools import groupby
 
 SEMANTIC = 'semantic'
 ACOUSTIC = 'acoustic'
@@ -23,38 +25,46 @@ class HubertTokenizer:
 
         self.device = device
 
-        self.processor = Wav2Vec2FeatureExtractor.from_pretrained("utter-project/mHuBERT-147")
-        self.hubert_model = HubertModel.from_pretrained("utter-project/mHuBERT-147")
+        self.processor = Wav2Vec2FeatureExtractor.from_pretrained("voidful/mhubert-base")
+        self.hubert_model = HubertModel.from_pretrained("voidful/mhubert-base")
+
+        kmeans_path = hf_hub_download(repo_id='voidful/mhubert-base', filename='mhubert_base_vp_en_es_fr_it3_L11_km1000.bin')
+
+        self.output_layer = 11
 
         self.hubert_model.to(device)
         self.hubert_model = torch.compile(self.hubert_model)
 
-        faiss_index_file = hf_hub_download(repo_id="utter-project/mHuBERT-147",
-                                           filename='mhubert147_faiss.index')
+        self.km = joblib.load(kmeans_path)
+        self.C_np = self.km.cluster_centers_.transpose()
+        self.Cnorm_np = (self.C_np ** 2).sum(0, keepdims=True)
 
-        self.index = faiss.read_index(faiss_index_file)
-        self.index_ivf = faiss.extract_index_ivf(self.index)
+        self.C = torch.from_numpy(self.C_np).to(device)
+        self.Cnorm = torch.from_numpy(self.Cnorm_np).to(device)
+
+        # self.km.cluster_centers_ = self.km.cluster_centers_.astype(np.float64)
         print("HuBert ready to tokenize")
 
     def encode(self, waveforms: list):
         """
         Create embeddings with Hubert model
         Classify embeddings into one of the pre-prepared 1000 clusters
+        https://github.com/voidful/asrp/blob/main/asrp/voice2code.py
         """
-        # waveforms = self.processor(waveforms, sampling_rate=self.input_sr, return_tensors='pt').input_values
+        waveforms = self.processor(waveforms[0], sampling_rate=self.audio_sample_rate, return_tensors='pt').input_values
         waveforms = waveforms.to(self.device)
-        embeddings = self.hubert_model.forward(waveforms)
-        embeddings = embeddings.last_hidden_state.detach()[0]
-        embeddings = embeddings.detach().cpu()
-        cluster_ids = self.assign_clusters(embeddings)
-        cluster_ids = cluster_ids.reshape(-1)
-        return cluster_ids
+        embeddings = self.hubert_model.forward(waveforms, output_hidden_states=True).hidden_states
+        embeddings = embeddings[self.output_layer].squeeze()
 
-    def assign_clusters(self, embeddings):
-        opq_mt = faiss.downcast_VectorTransform(self.index.chain.at(0))
-        xq_t = opq_mt.apply_py(embeddings)
-        distances, centroid_indices = self.index_ivf.quantizer.search(xq_t, 1)
-        return centroid_indices
+        dist = torch.sqrt(
+            embeddings.pow(2).sum(1, keepdim=True)
+            - 2 * torch.matmul(embeddings, self.C)
+            + self.Cnorm
+        )
+
+        min_dist = torch.topk(dist.detach(), 6, dim=-1, largest=False)
+        greedy_output = min_dist.indices.T.cpu().numpy()[0]
+        return greedy_output
 
     def decode(self):
         raise NotImplementedError
@@ -154,21 +164,25 @@ if __name__ == '__main__':
     parser.add_argument('--audio', type=str, required=True, help='Input directory for audio files.')
     args = parser.parse_args()
 
-    tokenizer = EncodecTokenizer()
+    # tokenizer = EncodecTokenizer()
 
-    # tokenizer = HubertTokenizer()
+    tokenizer = HubertTokenizer()
 
     from tqdm import tqdm
     from audio_utils import read_audio_file, save_audio
 
     waveform = read_audio_file(args.audio, sample_rate=tokenizer.audio_sample_rate)
-    waveform = waveform[0:1, :tokenizer.audio_sample_rate*5]
+    waveform = waveform[0:1, :]
 
     print(waveform.shape)
 
-    for i in tqdm(range(1000)):
-        tokens = tokenizer.encode(waveform)
-        print(tokens.shape)
+    tokens = tokenizer.encode(waveform)
+    print(tokens.shape)
+
+
+    # for i in tqdm(range(1000)):
+    #     tokens = tokenizer.encode(waveform)
+    #     print(tokens.shape)
 
 
     # waveform = tokenizer.decode(tokens)[0]

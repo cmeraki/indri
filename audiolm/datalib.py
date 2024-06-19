@@ -68,6 +68,7 @@ def load_batch(split, batch_size, block_size):
 
     return x, y
 
+
 def get_batch(split, device, block_size, batch_size):
     device_type = 'cuda:0'
 
