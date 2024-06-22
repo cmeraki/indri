@@ -16,6 +16,15 @@ filenames = {
     'val': filenames[:1000]
 }
 
+coarse_codebooks = 2
+per_codebook_size = 1024
+
+semantic_vocab_size = 1000
+acoustic_vocab_size = coarse_codebooks * per_codebook_size
+total_vocab_size = semantic_vocab_size + acoustic_vocab_size
+
+semantic_pad_token = total_vocab_size + 1
+acoustic_pad_token = total_vocab_size + 2
 
 def codebook_encoding(arr: torch.tensor, per_codebook_size: int):
     c, n = arr.shape
@@ -26,14 +35,6 @@ def codebook_encoding(arr: torch.tensor, per_codebook_size: int):
 
 
 def load_batch(split, batch_size, block_size):
-    coarse_codebooks = 2
-    per_codebook_size = 1024
-
-    semantic_pad_token = 2050
-    acoustic_pad_token = 2051
-
-    vocab_size = 2112
-
     n_semantic_tokens = 256
     # remove 1 because pad tokens will be appended
 
@@ -43,7 +44,7 @@ def load_batch(split, batch_size, block_size):
 
     for i in range(batch_size):
         f = some_filenames[i]
-        semantic = np.load(semantic_files[f])
+        semantic = np.load(semantic_files[f]) + acoustic_vocab_size
         acoustic = np.load(acoustic_files[f])[:coarse_codebooks, :]
 
         semantic_start_position = 0
@@ -87,5 +88,5 @@ def get_batch(split, device, block_size, batch_size):
 # for i in tqdm(range(1000)):
 #     x, y = get_batch(split='train', device='cuda:0', block_size=1024, batch_size=64*16)
 #     print(x.shape)
-
-# print(batch)
+#
+# # print(batch)

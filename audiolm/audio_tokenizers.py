@@ -120,25 +120,15 @@ class EncodecTokenizer:
         return codes
 
     def deserialize_tokens(self, tokens):
-        # serial token shape = n,1
-        # deserialize to (codebook, tokens)
-        # remove start_token
-        start_indices = tokens == self.pad_token
-        start_indices = np.argwhere(start_indices).reshape(-1)
-        start_indices = start_indices[1:]
-        splits = np.split(tokens, indices_or_sections=start_indices)
-        codebook_deindex = np.arange(self.n_codebooks) * self.per_codebook_size
-        codebook_deindex = np.expand_dims(codebook_deindex, axis=-1)
-        splits = [split[1:len(split) - 1 + len(split) % 2].reshape((2, split[1:].shape[0] // 2),
-                                                                   order='F') - codebook_deindex for split in
-                  splits]
-        return splits
+        cb1 = tokens[::2]
+        cb2 = tokens[1::2]
+        acoustic_tokens = np.stack([cb1, cb2 - 1024])
+        return acoustic_tokens
 
     def decode(self, tokens):
         model = self.load_model(bandwidth=6, device=self.device)
         tokens = self.deserialize_tokens(tokens)
-        token_single = np.expand_dims(tokens[0], axis=0)
-        good_audio = bark.api.generate_fine(x_coarse_gen=token_single[0, 0:2, :], silent=False)
+        good_audio = bark.api.generate_fine(x_coarse_gen=tokens[0:2, :], silent=False)
         good_audio = np.expand_dims(good_audio, axis=0)
         good_audio = torch.from_numpy(good_audio)
         wav = model.decode([(good_audio, None)])
@@ -152,10 +142,6 @@ class EncodecTokenizer:
         arr += i_values.reshape(c, 1)
         flat_arr = arr.t().contiguous().view(c * n)
         return flat_arr
-
-    def add_start_token(self, arr):
-        arr = np.insert(arr, 0, self.pad_token)
-        return arr
 
 
 if __name__ == '__main__':

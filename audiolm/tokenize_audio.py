@@ -81,7 +81,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     from audio_utils import find_audio_files
-    files = find_audio_files(args.indir)
-    # files = encode_dataset()
+    # files = find_audio_files(args.indir)
+    files = encode_dataset()
     print(len(files))
     encode_files(files=files, outdir=args.outdir, type=args.type)
