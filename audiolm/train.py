@@ -39,9 +39,9 @@ gradient_accumulation_steps = 16 # used to simulate larger batch sizes
 batch_size = 64 # if gradient_accumulation_steps > 1, this is the micro-batch size
 block_size = 1024
 # model
-n_layer = 8
-n_head = 8
-n_embd = 512
+n_layer = 6
+n_head = 6
+n_embd = 384
 dropout = 0.0 # for pretraining 0 is good, for finetuning try 0.1+
 bias = False # do we use bias inside LayerNorm and Linear layers?
 # adamw optimizer
@@ -155,7 +155,7 @@ for iter_num in tqdm(range(max_iters)):
                     'best_val_loss': best_val_loss,
                 }
                 print(f"saving checkpoint to {out_dir}")
-                torch.save(checkpoint, os.path.join(out_dir, 'ckpt_2048.pt'))
+                torch.save(checkpoint, os.path.join(out_dir, 'ckpt_gigaspeech_s_20M.pt'))
 
     if iter_num == 0 and eval_only:
         break

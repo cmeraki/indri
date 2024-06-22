@@ -6,7 +6,8 @@ import torchaudio
 import torch
 from tqdm import tqdm
 
-from audio_tokenizers import HubertTokenizer, EncodecTokenizer, SEMANTIC, ACOUSTIC
+from audio_tokenizers import HubertTokenizer, EncodecTokenizer, TextTokenizer
+from audio_tokenizers import SEMANTIC, ACOUSTIC, TEXT
 
 DEVICE = 'cuda:0'
 
@@ -23,11 +24,14 @@ def get_tokenizer(type):
     if type == ACOUSTIC:
         tokenizer = EncodecTokenizer(n_codebooks=8, device=DEVICE)
 
+    if type == TEXT:
+        tokenizer = TextTokenizer()
+
     return tokenizer
 
 
 @torch.inference_mode()
-def encode_files(files, outdir, type='acoustic'):
+def encode_audio_files(files, outdir, type='acoustic'):
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True, parents=True)
     tokenizer = get_tokenizer(type)
@@ -58,7 +62,7 @@ def encode_files(files, outdir, type='acoustic'):
             print(f"Error processing : {file}")
 
 
-def encode_dataset():
+def get_audio_file_paths():
     from datasets import load_dataset
     gs = load_dataset("speechcolab/gigaspeech",
                       "s",
@@ -73,6 +77,22 @@ def encode_dataset():
     return files
 
 
+def get_text():
+    from datasets import load_dataset
+    gs = load_dataset("speechcolab/gigaspeech",
+                      "s",
+                      token='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')
+    files = []
+    splits = ["train"]
+    for split in splits:
+        for example in gs[split]:
+            audio_input = example["audio"]['path']
+            files.append(audio_input)
+
+    return files
+
+
+
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(description='Encode audio files.')
@@ -84,6 +104,6 @@ if __name__ == '__main__':
 
     from audio_utils import find_audio_files
     # files = find_audio_files(args.indir)
-    files = encode_dataset()
+    files = get_audio_file_paths()
     print(len(files))
-    encode_files(files=files, outdir=args.outdir, type=args.type)
+    encode_audio_files(files=files, outdir=args.outdir, type=args.type)

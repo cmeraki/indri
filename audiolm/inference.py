@@ -34,7 +34,7 @@ def load_llm():
     print("Loading model")
     # model
     # init from a model saved in a specific directory
-    ckpt_path = os.path.join('out', 'ckpt_2048.pt')
+    ckpt_path = os.path.join('out', 'ckpt_gigaspeech_s_20M.pt')
     checkpoint = torch.load(ckpt_path, map_location=device)
     gptconf = GPTConfig(**checkpoint['model_args'])
     model = GPT(gptconf)
@@ -56,10 +56,10 @@ def load_llm():
     print("Acoustic pad", acoustic_pad_token)
     print("Semantic pad", semantic_pad_token)
 
-    start_ids = np.load('../data/audio_tokens/semantic/AUD0000000468_S0000008.wav.npy')
+    start_ids = np.load('../data/audio_tokens/semantic/AUD0000001381_S0000519.wav.npy')
     start_ids = start_ids[:250] + acoustic_vocab_size
     start_ids = np.append(start_ids, semantic_pad_token)
-    print(start_ids)
+
     x = (torch.tensor(start_ids, dtype=torch.long, device=device)[None, ...])
     model.eval()
 
@@ -71,11 +71,11 @@ def load_llm():
             for k in tqdm(range(num_samples)):
                 y = model.generate(x, max_new_tokens, temperature=temperature, top_k=top_k)
                 y = y.detach().cpu().numpy()[0]
-                print(list(y))
+                # print(list(y))
                 start_idx = np.where(y == semantic_pad_token)[0][0]
                 end_idx = np.where(y == acoustic_pad_token)[0][0]
                 y = y[start_idx + 1: end_idx]
-                print(y)
+                # print(y)
                 wav = tokenizer.decode(y)
 
                 save_audio(wav[0], f'{k}.wav', sample_rate=24000)

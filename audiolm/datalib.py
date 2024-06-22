@@ -5,7 +5,7 @@ import random
 
 from pathlib import Path
 
-data_dir = '../data/audio_tokens/'
+data_dir = '../data/audio_tokens/gigaspeech_s/'
 
 semantic_files = {Path(f).name: Path(f) for f in glob.glob(f"{data_dir}/semantic/*.npy")}
 acoustic_files = {Path(f).name: Path(f) for f in glob.glob(f"{data_dir}/acoustic/*.npy")}

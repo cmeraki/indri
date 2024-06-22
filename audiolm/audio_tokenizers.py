@@ -5,7 +5,7 @@ import numpy as np
 
 from huggingface_hub import hf_hub_download
 from encodec import EncodecModel
-from transformers import HubertModel, Wav2Vec2FeatureExtractor
+from transformers import HubertModel, Wav2Vec2FeatureExtractor, AutoTokenizer
 
 import joblib
 from audio_utils import pad_batch
@@ -14,6 +14,7 @@ from itertools import groupby
 
 SEMANTIC = 'semantic'
 ACOUSTIC = 'acoustic'
+TEXT = 'text'
 
 
 class HubertTokenizer:
@@ -68,6 +69,19 @@ class HubertTokenizer:
 
     def decode(self):
         raise NotImplementedError
+
+
+class TextTokenizer:
+    def __init__(self, device='cpu'):
+        self.type = TEXT
+        self.tokenizer = AutoTokenizer.from_pretrained("astronomer/Llama-3-8B-Instruct-GPTQ-4-Bit")
+
+    def encode(self, text: str):
+        tokens = self.tokenizer.encode(text)
+        return tokens
+
+    def decode(self, tokens):
+        return self.tokenizer.decode(tokens)
 
 
 class EncodecTokenizer:
