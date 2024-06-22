@@ -60,10 +60,12 @@ def encode_files(files, outdir, type='acoustic'):
 
 def encode_dataset():
     from datasets import load_dataset
-
-    gs = load_dataset("speechcolab/gigaspeech", "xs",  token='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')
+    gs = load_dataset("speechcolab/gigaspeech",
+                      "s",
+                      token='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')
     files = []
-    for split in gs:
+    splits = ["train"]
+    for split in splits:
         for example in gs[split]:
             audio_input = example["audio"]['path']
             files.append(audio_input)

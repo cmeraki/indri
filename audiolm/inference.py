@@ -69,22 +69,16 @@ def load_llm():
     with torch.no_grad():
         with ctx:
             for k in tqdm(range(num_samples)):
-                # try:
-                    y = model.generate(x, max_new_tokens, temperature=temperature, top_k=top_k)
-                    y = y.detach().cpu().numpy()[0]
+                y = model.generate(x, max_new_tokens, temperature=temperature, top_k=top_k)
+                y = y.detach().cpu().numpy()[0]
+                print(list(y))
+                start_idx = np.where(y == semantic_pad_token)[0][0]
+                end_idx = np.where(y == acoustic_pad_token)[0][0]
+                y = y[start_idx + 1: end_idx]
+                print(y)
+                wav = tokenizer.decode(y)
 
-                    start_idx = np.where(y == semantic_pad_token)[0][0]
-                    end_idx = np.where(y == acoustic_pad_token)[0][0]
-
-                    print(start_idx, end_idx, y[start_idx+1: end_idx])
-                    wav = tokenizer.decode(y[start_idx+1: end_idx])
-
-                    print(wav)
-                    save_audio(wav[0], f'{k}.wav', sample_rate=24000)
-                    # start_ids = y[0][-101:]
-                    print('I made it')
-                # except:
-                #     print("I have failed")
+                save_audio(wav[0], f'{k}.wav', sample_rate=24000)
 
 if __name__ == "__main__":
     # tokens = np.load('data/audio_tokens/74de910e-e10c-418b-8c22-11ab58e5cd13.npy')
