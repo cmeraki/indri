@@ -119,7 +119,7 @@ class GPT(nn.Module):
             if pn.endswith('c_proj.weight'):
                 torch.nn.init.normal_(p, mean=0.0, std=0.02/math.sqrt(2 * config.n_layer))
 
-        print("number of parameters: %.2fM" % (self.get_num_params()/1e6,))
+        print(f"number of parameters: {self.get_num_params()}")
 
     def get_num_params(self, non_embedding=True):
         n_params = sum(p.numel() for p in self.parameters())

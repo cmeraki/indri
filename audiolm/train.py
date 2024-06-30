@@ -1,121 +1,69 @@
-"""
-Modify nanogpt to train audio.
-"""
-import glob
 import os
-import random
 import time
 import math
-import pickle
 from contextlib import nullcontext
 from datalib import get_batch
 
-import numpy as np
 import torch
-from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.distributed import init_process_group, destroy_process_group
 
 from gpt2_model import GPTConfig, GPT
 
 from tqdm import tqdm
 
-# -----------------------------------------------------------------------------
-# default config values designed to train a gpt2 (124M) on OpenWebText
-# I/O
-out_dir = 'out'
-eval_interval = 200
-log_interval = 1
-eval_iters = 200
-eval_only = False # if True, script exits right after the first eval
-always_save_checkpoint = True # if True, always save a checkpoint after each eval
-init_from = 'scratch' # 'scratch' or 'resume' or 'gpt2*'
-# wandb logging
-wandb_log = False # disabled by default
-wandb_project = 'owt'
-wandb_run_name = 'gpt2' # 'run' + str(time.time())
-# data
-dataset = 'openwebtext'
-gradient_accumulation_steps = 16 # used to simulate larger batch sizes
-batch_size = 64 # if gradient_accumulation_steps > 1, this is the micro-batch size
-block_size = 1024
-# model
-n_layer = 6
-n_head = 6
-n_embd = 384
-dropout = 0.0 # for pretraining 0 is good, for finetuning try 0.1+
-bias = False # do we use bias inside LayerNorm and Linear layers?
-# adamw optimizer
-learning_rate = 6e-4 # max learning rate
-max_iters = 600000 # total number of training iterations
-weight_decay = 1e-1
-beta1 = 0.9
-beta2 = 0.95
-grad_clip = 1.0 # clip gradients at this value, or disable if == 0.0
-# learning rate decay settings
-decay_lr = True # whether to decay the learning rate
-warmup_iters = 2000 # how many steps to warm up for
-lr_decay_iters = 600000
-min_lr = 6e-5
-
-backend = 'nccl'
-
-device = 'cuda:0'
-dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16'
-compile = True
-
 seed_offset = 0
-ddp_world_size = 1
-tokens_per_iter = gradient_accumulation_steps * ddp_world_size * batch_size * block_size
-print(f"tokens per iteration will be: {tokens_per_iter:,}")
-
-os.makedirs(out_dir, exist_ok=True)
+device = 'cpu'
+dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16'
 
 torch.manual_seed(1337 + seed_offset)
-torch.backends.cuda.matmul.allow_tf32 = True # allow tf32 on matmul
-torch.backends.cudnn.allow_tf32 = True # allow tf32 on cudnn
-device_type = 'cuda' if 'cuda' in device else 'cpu' # for later use in torch.autocast
+torch.backends.cuda.matmul.allow_tf32 = True  # allow tf32 on matmul
+torch.backends.cudnn.allow_tf32 = True  # allow tf32 on cudnn
+device_type = 'cuda' if 'cuda' in device else 'cpu'  # for later use in torch.autocast
 
 ptdtype = {'float32': torch.float32,
            'bfloat16': torch.bfloat16,
            'float16': torch.float16}[dtype]
 
-ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
 
-iter_num = 0
-best_val_loss = 1e9
+def get_ctx():
+    ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
+    return ctx
 
-model_args = dict(n_layer=n_layer, n_head=n_head, n_embd=n_embd, block_size=block_size,
-                  bias=bias, vocab_size=3072, dropout=dropout)
 
-gptconf = GPTConfig(**model_args)
-model = GPT(gptconf)
+def get_model(n_layer=4,
+                n_head=4,
+                n_embd=256,
+                vocab_size=3072,
+                dropout = 0.0,
+                block_size=1024,
+                bias = False,
+                compile=True):
 
-model.to(device)
+    model_args = dict(n_layer=n_layer,
+                      n_head=n_head,
+                      n_embd=n_embd,
+                      block_size=block_size,
+                      bias=bias,
+                      vocab_size=vocab_size,
+                      dropout=dropout)
 
-scaler = torch.cuda.amp.GradScaler(enabled=(dtype == 'float16'))
-optimizer = model.configure_optimizers(weight_decay, learning_rate, (beta1, beta2), device_type)
+    gptconf = GPTConfig(**model_args)
+    model = GPT(gptconf)
+    print(gptconf)
 
-if compile:
-    print("compiling the model... (takes a ~minute)")
-    unoptimized_model = model
-    model = torch.compile(model)
+    model.to(device)
+    if compile:
+        print("compiling the model... (takes a ~minute)")
+        model = torch.compile(model)
 
-@torch.no_grad()
-def estimate_loss():
-    out = {}
-    model.eval()
-    for split in ['train', 'val']:
-        losses = torch.zeros(eval_iters)
-        for k in range(eval_iters):
-            X, Y = get_batch(split, block_size=block_size, batch_size=batch_size, device=device)
-            with ctx:
-                logits, loss = model(X, Y)
-            losses[k] = loss.item()
-        out[split] = losses.mean()
-    model.train()
-    return out
+    return model
+
 
 def get_lr(it):
+    warmup_iters = 2000
+    lr_decay_iters = 600000
+    min_lr = 6e-5
+    learning_rate = 6e-4
+
     if it < warmup_iters:
         return learning_rate * it / warmup_iters
     if it > lr_decay_iters:
@@ -126,66 +74,87 @@ def get_lr(it):
     return min_lr + coeff * (learning_rate - min_lr)
 
 
-X, Y = get_batch('train', block_size=block_size, batch_size=batch_size, device=device)
-print(X.shape, Y.shape)
-
-t0 = time.time()
-local_iter_num = 0 # number of iterations in the lifetime of this process
-raw_model = model # unwrap DDP container if needed
-running_mfu = -1.0
-
-for iter_num in tqdm(range(max_iters)):
-    # determine and set the learning rate for this iteration
-    lr = get_lr(iter_num) if decay_lr else learning_rate
-    for param_group in optimizer.param_groups:
-        param_group['lr'] = lr
-
-    # evaluate the loss on train/val sets and write checkpoints
-    if iter_num % eval_interval == 0:
-        losses = estimate_loss()
-        print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
-        if losses['val'] < best_val_loss or always_save_checkpoint:
-            best_val_loss = losses['val']
-            if iter_num > 0:
-                checkpoint = {
-                    'model': raw_model.state_dict(),
-                    'optimizer': optimizer.state_dict(),
-                    'model_args': model_args,
-                    'iter_num': iter_num,
-                    'best_val_loss': best_val_loss,
-                }
-                print(f"saving checkpoint to {out_dir}")
-                torch.save(checkpoint, os.path.join(out_dir, 'ckpt_gigaspeech_s_20M.pt'))
-
-    if iter_num == 0 and eval_only:
-        break
-
-    # forward backward update, with optional gradient accumulation to simulate larger batch size
-    # and using the GradScaler if data type is float16
-    for micro_step in range(gradient_accumulation_steps):
+@torch.no_grad()
+def estimate_loss(model, ctx, eval_batches):
+    model.eval()
+    losses = torch.zeros(len(eval_batches))
+    for k, (X, Y) in enumerate(eval_batches):
         with ctx:
             logits, loss = model(X, Y)
-            loss = loss / gradient_accumulation_steps # scale the loss to account for gradient accumulation
-        # immediately async prefetch next batch while model is doing the forward pass on the GPU
-        X, Y = get_batch('train', block_size=block_size, batch_size=batch_size, device=device)
-        # backward pass, with gradient scaling if training in fp16
-        scaler.scale(loss).backward()
-    # clip the gradient
-    if grad_clip != 0.0:
-        scaler.unscale_(optimizer)
-        torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
-    # step the optimizer and scaler if training in fp16
-    scaler.step(optimizer)
-    scaler.update()
-    # flush the gradients as soon as we can, no need for this memory anymore
-    optimizer.zero_grad(set_to_none=True)
+        losses[k] = loss.item()
+    out = losses.mean()
+    model.train()
+    return out
 
-    # timing and logging
-    t1 = time.time()
-    dt = t1 - t0
-    t0 = t1
-    if iter_num % log_interval == 0:
-        lossf = loss.item() * gradient_accumulation_steps
-        print(f"iter {iter_num}: loss {lossf:.4f}, time {dt*1000:.2f}ms, mfu {running_mfu*100:.2f}%")
-    iter_num += 1
-    local_iter_num += 1
+def train(model,
+          get_batch,
+          out_dir,
+          steps=1000,
+          batch_size=64,
+          block_size=1024,
+          grad_accum_steps=16,
+          eval_interval = 200,
+          eval_steps=100):
+
+    os.makedirs(out_dir, exist_ok=True)
+
+    grad_clip = 1.0
+    ctx = get_ctx()
+
+    tokens_per_iter = grad_accum_steps * batch_size * block_size
+    print(f"tokens per iteration will be: {tokens_per_iter:,}")
+
+    scaler = torch.cuda.amp.GradScaler(enabled=(dtype == 'float16'))
+    optimizer = model.configure_optimizers(1e-1, get_lr(0), (0.9, 0.95), device_type)
+
+    t0 = time.time()
+    local_iter_num = 0
+
+    eval_batches = [get_batch('val', batch_size=batch_size, block_size=block_size, device=device) for i in range(eval_steps)]
+    X, Y = get_batch('train', block_size=block_size, batch_size=batch_size, device=device)
+
+    for iter_num in tqdm(range(steps)):
+        for param_group in optimizer.param_groups:
+            param_group['lr'] = get_lr(iter_num)
+
+        if iter_num % eval_interval == 0:
+            losses = estimate_loss(model, ctx, eval_batches)
+            print(f"step {iter_num}: val loss {losses:.4f}")
+            model_fname = f"{out_dir}/gpt_{iter_num}.pt"
+            torch.save({"model":  model.state_dict()}, model_fname)
+
+        for micro_step in range(grad_accum_steps):
+            with ctx:
+                logits, loss = model(X, Y)
+                loss = loss / grad_accum_steps
+            X, Y = get_batch('train', block_size=block_size, batch_size=batch_size, device=device)
+            scaler.scale(loss).backward()
+
+        if grad_clip != 0.0:
+            scaler.unscale_(optimizer)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+
+        scaler.step(optimizer)
+        scaler.update()
+        optimizer.zero_grad(set_to_none=True)
+
+        t1 = time.time()
+        dt = t1 - t0
+        t0 = t1
+        lossf = loss.item() * grad_accum_steps
+        print(f"iter {iter_num}: loss {lossf:.4f}, time {dt*1000:.2f}ms")
+        iter_num += 1
+        local_iter_num += 1
+
+    model_fname = f"{out_dir}/gpt_last.pt"
+    torch.save({"model": model.state_dict()}, model_fname)
+
+def dummy_get_batch(split, block_size, batch_size, device):
+    X = torch.zeros(batch_size, block_size, dtype=torch.long).to(device)
+    Y = torch.ones(batch_size, block_size, dtype=torch.long).to(device)
+    return X, Y
+
+
+if __name__ == '__main__':
+    model = get_model(n_layer=1, n_head=1, n_embd=16, vocab_size=32, block_size=1024)
+    train(model, get_batch=get_batch, out_dir='out', steps=1000, block_size=512, eval_interval=5, eval_steps=4, batch_size=4)
