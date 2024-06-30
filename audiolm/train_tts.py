@@ -1,32 +1,61 @@
-from trainer import gpt_trainer
-from datalib import semantic_acoustic_generator, text_semantic_generator
-import tokenizer
+from train import train as gpt_train
+from train import get_model
+from tokenlib import SEMANTIC, ACOUSTIC, TEXT, encode_files
 
-data_dir = '../data'
+from datalib import DataLoader
+from pathlib import Path
 
-dataset = GigaSpeechDataset()
+data_dir = Path('../data')
+out_dir = Path('out')
 
-tokenizer.tokenize(dataset, data_dir, type='semantic')
-tokenizer.tokenize(dataset, data_dir, type='acoustic')
-tokenizer.tokenize(dataset, data_dir, type='text')
 
-t1 = gpt_trainer.create(
-    layers=8,
-    heads=8,
-    dim=512,
-)
+def prepare_data():
+    encode_files(dataset='speechcolab/gigaspeech', outdir=outdir, type=type)
 
-data_generator = semantic_acoustic_generator(data_dir)
 
-train_steps = 100_000
-semantic_acoustic_model = t1.train(data_generator, train_steps, model_dir='')
+def train_text_semantic():
+    text_semantic_model = get_model(n_layer=4,
+                                    n_head=4,
+                                    n_embd=256,
+                                    vocab_size=50000,
+                                    block_size=1024)
 
-t2 = gpt_trainer.create(
-    layers=8,
-    heads=8,
-    dim=512,
-)
 
-data_generator = text_semantic_generator(data_dir)
-text_acoustic_model = t2.train(data_generator, train_steps, model_dir='')
+    data_generator = DataLoader(data_dir=data_dir/'audio_tokens/gigaspeech_xs',
+                               source=TEXT,
+                               target=SEMANTIC)
 
+    gpt_train(text_semantic_model,
+          get_batch=data_generator.get_batch,
+          out_dir=f'{out_dir}/text_semantic',
+          steps=3000,
+          block_size=1024,
+          eval_interval=200,
+          eval_steps=100,
+          batch_size=32)
+
+
+def train_semantic_acoustic():
+    semantic_acoustic_model = get_model(n_layer=4,
+                      n_head=4,
+                      n_embd=256,
+                      vocab_size=3072,
+                      block_size=1024)
+
+    data_generator = semantic_acoustic_generator(data_dir)
+    gpt_train(semantic_acoustic_model,
+          get_batch=data_generator,
+          out_dir=f'{out_dir}/semantic_acoustic',
+          steps=3000,
+          block_size=1024,
+          eval_interval=5,
+          eval_steps=4,
+          batch_size=64)
+
+
+def train():
+    # prepare_data()
+    train_text_semantic()
+    # train_semantic_acoustic()
+
+train()

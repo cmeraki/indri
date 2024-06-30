@@ -6,7 +6,7 @@ import bark
 import torch
 from encodec.utils import save_audio
 from datalib import semantic_pad_token, acoustic_pad_token, acoustic_vocab_size, semantic_vocab_size
-from audio_tokenizers import EncodecTokenizer
+from tokenlib import EncodecTokenizer
 
 def load_llm():
     from gpt2_model import GPT, GPTConfig

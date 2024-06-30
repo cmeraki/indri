@@ -11,6 +11,16 @@ import joblib
 from audio_utils import pad_batch
 import bark
 from itertools import groupby
+import torchaudio
+from pathlib import Path
+from tqdm import tqdm
+from encodec.utils import convert_audio
+
+DEVICE = 'cuda:0'
+
+torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32 = True
+torch.amp.autocast(device_type='cuda', dtype='bfloat16')
 
 SEMANTIC = 'semantic'
 ACOUSTIC = 'acoustic'
@@ -70,11 +80,10 @@ class HubertTokenizer:
     def decode(self):
         raise NotImplementedError
 
-
 class TextTokenizer:
     def __init__(self, device='cpu'):
         self.type = TEXT
-        self.tokenizer = AutoTokenizer.from_pretrained("astronomer/Llama-3-8B-Instruct-GPTQ-4-Bit")
+        self.tokenizer = AutoTokenizer.from_pretrained('TheBloke/Llama-2-7B-Chat-GPTQ')
 
     def encode(self, text: str):
         tokens = self.tokenizer.encode(text)
@@ -82,7 +91,6 @@ class TextTokenizer:
 
     def decode(self, tokens):
         return self.tokenizer.decode(tokens)
-
 
 class EncodecTokenizer:
     def __init__(self, device='cpu', n_codebooks=2):
@@ -149,44 +157,66 @@ class EncodecTokenizer:
         wav = wav.detach()
         return wav
 
-    @staticmethod
-    def codebook_encoding(arr: torch.tensor, per_codebook_size: int):
-        c, n = arr.shape
-        i_values = np.arange(c) * per_codebook_size
-        arr += i_values.reshape(c, 1)
-        flat_arr = arr.t().contiguous().view(c * n)
-        return flat_arr
+def get_tokenizer(type):
+    tokenizer = None
+    if type == SEMANTIC:
+        tokenizer = HubertTokenizer(device=DEVICE)
 
+    if type == ACOUSTIC:
+        tokenizer = EncodecTokenizer(n_codebooks=8, device=DEVICE)
+
+    if type == TEXT:
+        tokenizer = TextTokenizer()
+
+    return tokenizer
+
+@torch.inference_mode()
+def encode_files(outdir, type=ACOUSTIC):
+    outdir = Path(outdir)
+    outdir.mkdir(exist_ok=True, parents=True)
+    tokenizer = get_tokenizer(type)
+
+    for example in tqdm(iter_dataset()):
+        segment_id = example['segment_id']
+        outpath = outdir / segment_id
+
+        try:
+            if type == TEXT:
+                text = example["text"]
+                tokens = tokenizer.encode(text)
+                tokens = np.asarray(tokens, dtype=np.uint32)
+                np.save(outpath, tokens)
+
+            if type in (ACOUSTIC, SEMANTIC):
+                file = example["audio"]["path"]
+                waveform, sr = torchaudio.load(file)
+                waveform = convert_audio(waveform,
+                                         sr,
+                                         target_sr=tokenizer.audio_sample_rate,
+                                         target_channels=1)
+
+                tokens = tokenizer.encode(waveform)
+                np.save(outpath, tokens)
+
+        except:
+            print("Error processing", segment_id)
+
+def iter_dataset(name="speechcolab/gigaspeech", splits=("train", )):
+    from datasets import load_dataset
+    gs = load_dataset(name,
+                      "xs",
+                      token='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')
+
+    for split in splits:
+        for example in gs[split]:
+            yield example
 
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(description='Encode audio files.')
-    parser.add_argument('--audio', type=str, required=True, help='Input directory for audio files.')
+    parser.add_argument('--dataset', type=str, required=True, help='Input directory for audio files.')
+    parser.add_argument('--outdir', type=str, required=True, help='Output directory for encoded audio.')
+    parser.add_argument('--type', type=str, required=True, help='Type of token semantic/acoustic')
+
     args = parser.parse_args()
-
-    # tokenizer = EncodecTokenizer()
-
-    tokenizer = HubertTokenizer()
-
-    from tqdm import tqdm
-    from audio_utils import read_audio_file, save_audio
-
-    waveform = read_audio_file(args.audio, sample_rate=tokenizer.audio_sample_rate)
-    waveform = waveform[0:1, :]
-
-    print(waveform.shape)
-
-    tokens = tokenizer.encode(waveform)
-    print(tokens.shape)
-
-
-    # for i in tqdm(range(1000)):
-    #     tokens = tokenizer.encode(waveform)
-    #     print(tokens.shape)
-
-
-    # waveform = tokenizer.decode(tokens)[0]
-    # print(waveform)
-    # save_audio(wav=waveform,
-    #            path='test.wav',
-    #            sample_rate=tokenizer.audio_sample_rate)
+    encode_files(outdir=args.outdir, type=args.type)

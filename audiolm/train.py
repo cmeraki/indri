@@ -2,7 +2,6 @@ import os
 import time
 import math
 from contextlib import nullcontext
-from datalib import get_batch
 
 import torch
 
@@ -11,7 +10,7 @@ from gpt2_model import GPTConfig, GPT
 from tqdm import tqdm
 
 seed_offset = 0
-device = 'cpu'
+device = 'cuda:0'
 dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16'
 
 torch.manual_seed(1337 + seed_offset)
@@ -156,5 +155,17 @@ def dummy_get_batch(split, block_size, batch_size, device):
 
 
 if __name__ == '__main__':
-    model = get_model(n_layer=1, n_head=1, n_embd=16, vocab_size=32, block_size=1024)
-    train(model, get_batch=get_batch, out_dir='out', steps=1000, block_size=512, eval_interval=5, eval_steps=4, batch_size=4)
+    model = get_model(n_layer=4,
+                      n_head=4,
+                      n_embd=256,
+                      vocab_size=3072,
+                      block_size=1024)
+
+    train(model,
+          get_batch=get_batch,
+          out_dir='out',
+          steps=3000,
+          block_size=1024,
+          eval_interval=5,
+          eval_steps=4,
+          batch_size=64)
