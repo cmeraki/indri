@@ -241,4 +241,4 @@ def get_model(n_layer=4,
         print("compiling the model... (takes a ~minute)")
         model = torch.compile(model)
 
-        return model
+    return model

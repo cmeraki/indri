@@ -67,7 +67,7 @@ def train(model,
     device_type = 'cuda' if 'cuda' in device else 'cpu'
 
     grad_clip = 1.0
-    ctx = get_ctx(device)
+    ctx = get_ctx(device_type)
 
     tokens_per_iter = grad_accum_steps * batch_size * block_size
     print(f"tokens per iteration will be: {tokens_per_iter:,}")

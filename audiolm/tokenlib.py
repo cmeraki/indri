@@ -14,8 +14,6 @@ from pathlib import Path
 from tqdm import tqdm
 from encodec.utils import convert_audio
 
-DEVICE = 'cuda:0'
-
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 torch.amp.autocast(device_type='cuda', dtype='bfloat16')
@@ -78,6 +76,7 @@ class HubertTokenizer:
     def decode(self):
         raise NotImplementedError
 
+
 class TextTokenizer:
     def __init__(self, device='cpu'):
         self.type = TEXT
@@ -89,6 +88,7 @@ class TextTokenizer:
 
     def decode(self, tokens):
         return self.tokenizer.decode(tokens)
+
 
 class EncodecTokenizer:
     def __init__(self, device='cpu', n_codebooks=2):
@@ -155,26 +155,28 @@ class EncodecTokenizer:
         wav = wav.detach()
         return wav
 
-def get_tokenizer(type):
+
+def get_tokenizer(type, device):
     tokenizer = None
     if type == SEMANTIC:
-        tokenizer = HubertTokenizer(device=DEVICE)
+        tokenizer = HubertTokenizer(device=device)
 
     if type == ACOUSTIC:
-        tokenizer = EncodecTokenizer(n_codebooks=8, device=DEVICE)
+        tokenizer = EncodecTokenizer(n_codebooks=8, device=device)
 
     if type == TEXT:
         tokenizer = TextTokenizer()
 
     return tokenizer
 
+
 @torch.inference_mode()
-def encode_files(dataset, outdir, type=ACOUSTIC):
+def encode_files(dataset, outdir, type, device):
     print(f"Writing in {outdir}")
 
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True, parents=True)
-    tokenizer = get_tokenizer(type)
+    tokenizer = get_tokenizer(type, device)
 
     for example in tqdm(dataset):
         segment_id = example.id
@@ -200,6 +202,7 @@ def encode_files(dataset, outdir, type=ACOUSTIC):
 
         except:
             print("Error processing", segment_id)
+
 
 if __name__ == '__main__':
     import argparse
