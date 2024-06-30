@@ -212,3 +212,33 @@ class GPT(nn.Module):
             idx = torch.cat((idx, idx_next), dim=1)
 
         return idx
+
+
+def get_model(n_layer=4,
+              n_head=4,
+              n_embd=256,
+              vocab_size=3072,
+              dropout=0.0,
+              block_size=1024,
+              bias=False,
+              device='cpu',
+              compile=True):
+
+    model_args = dict(n_layer=n_layer,
+                      n_head=n_head,
+                      n_embd=n_embd,
+                      block_size=block_size,
+                      bias=bias,
+                      vocab_size=vocab_size,
+                      dropout=dropout)
+
+    gptconf = GPTConfig(**model_args)
+    model = GPT(gptconf)
+    print(gptconf)
+
+    model.to(device)
+    if compile:
+        print("compiling the model... (takes a ~minute)")
+        model = torch.compile(model)
+
+        return model

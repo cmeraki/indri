@@ -2,59 +2,24 @@ import os
 import time
 import math
 from contextlib import nullcontext
-
 import torch
-
-from gpt2_model import GPTConfig, GPT
-
 from tqdm import tqdm
 
 seed_offset = 0
-device = 'cuda:0'
 dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16'
 
 torch.manual_seed(1337 + seed_offset)
 torch.backends.cuda.matmul.allow_tf32 = True  # allow tf32 on matmul
 torch.backends.cudnn.allow_tf32 = True  # allow tf32 on cudnn
-device_type = 'cuda' if 'cuda' in device else 'cpu'  # for later use in torch.autocast
 
 ptdtype = {'float32': torch.float32,
            'bfloat16': torch.bfloat16,
            'float16': torch.float16}[dtype]
 
 
-def get_ctx():
+def get_ctx(device_type):
     ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
     return ctx
-
-
-def get_model(n_layer=4,
-                n_head=4,
-                n_embd=256,
-                vocab_size=3072,
-                dropout = 0.0,
-                block_size=1024,
-                bias = False,
-                compile=True):
-
-    model_args = dict(n_layer=n_layer,
-                      n_head=n_head,
-                      n_embd=n_embd,
-                      block_size=block_size,
-                      bias=bias,
-                      vocab_size=vocab_size,
-                      dropout=dropout)
-
-    gptconf = GPTConfig(**model_args)
-    model = GPT(gptconf)
-    print(gptconf)
-
-    model.to(device)
-    if compile:
-        print("compiling the model... (takes a ~minute)")
-        model = torch.compile(model)
-
-    return model
 
 
 def get_lr(it):
@@ -85,6 +50,7 @@ def estimate_loss(model, ctx, eval_batches):
     model.train()
     return out
 
+
 def train(model,
           get_batch,
           out_dir,
@@ -93,12 +59,15 @@ def train(model,
           block_size=1024,
           grad_accum_steps=16,
           eval_interval = 200,
-          eval_steps=100):
+          eval_steps=100,
+          device='cpu'):
 
     os.makedirs(out_dir, exist_ok=True)
 
+    device_type = 'cuda' if 'cuda' in device else 'cpu'
+
     grad_clip = 1.0
-    ctx = get_ctx()
+    ctx = get_ctx(device)
 
     tokens_per_iter = grad_accum_steps * batch_size * block_size
     print(f"tokens per iteration will be: {tokens_per_iter:,}")
@@ -148,6 +117,7 @@ def train(model,
     model_fname = f"{out_dir}/gpt_last.pt"
     torch.save({"model": model.state_dict()}, model_fname)
 
+
 def dummy_get_batch(split, block_size, batch_size, device):
     X = torch.zeros(batch_size, block_size, dtype=torch.long).to(device)
     Y = torch.ones(batch_size, block_size, dtype=torch.long).to(device)
@@ -155,6 +125,7 @@ def dummy_get_batch(split, block_size, batch_size, device):
 
 
 if __name__ == '__main__':
+    from gpt2_model import get_model
     model = get_model(n_layer=4,
                       n_head=4,
                       n_embd=256,
@@ -162,7 +133,7 @@ if __name__ == '__main__':
                       block_size=1024)
 
     train(model,
-          get_batch=get_batch,
+          get_batch=dummy_get_batch,
           out_dir='out',
           steps=3000,
           block_size=1024,

@@ -8,9 +8,7 @@ from encodec import EncodecModel
 from transformers import HubertModel, Wav2Vec2FeatureExtractor, AutoTokenizer
 
 import joblib
-from audio_utils import pad_batch
 import bark
-from itertools import groupby
 import torchaudio
 from pathlib import Path
 from tqdm import tqdm
@@ -171,24 +169,26 @@ def get_tokenizer(type):
     return tokenizer
 
 @torch.inference_mode()
-def encode_files(outdir, type=ACOUSTIC):
+def encode_files(dataset, outdir, type=ACOUSTIC):
+    print(f"Writing in {outdir}")
+
     outdir = Path(outdir)
     outdir.mkdir(exist_ok=True, parents=True)
     tokenizer = get_tokenizer(type)
 
-    for example in tqdm(iter_dataset()):
-        segment_id = example['segment_id']
+    for example in tqdm(dataset):
+        segment_id = example.id
         outpath = outdir / segment_id
 
         try:
             if type == TEXT:
-                text = example["text"]
+                text = example.text
                 tokens = tokenizer.encode(text)
                 tokens = np.asarray(tokens, dtype=np.uint32)
                 np.save(outpath, tokens)
 
             if type in (ACOUSTIC, SEMANTIC):
-                file = example["audio"]["path"]
+                file = example.audio_path
                 waveform, sr = torchaudio.load(file)
                 waveform = convert_audio(waveform,
                                          sr,
@@ -201,16 +201,6 @@ def encode_files(outdir, type=ACOUSTIC):
         except:
             print("Error processing", segment_id)
 
-def iter_dataset(name="speechcolab/gigaspeech", splits=("train", )):
-    from datasets import load_dataset
-    gs = load_dataset(name,
-                      "xs",
-                      token='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')
-
-    for split in splits:
-        for example in gs[split]:
-            yield example
-
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(description='Encode audio files.')
@@ -219,4 +209,5 @@ if __name__ == '__main__':
     parser.add_argument('--type', type=str, required=True, help='Type of token semantic/acoustic')
 
     args = parser.parse_args()
-    encode_files(outdir=args.outdir, type=args.type)
+    from utils import iter_dataset
+    encode_files(iter_dataset(), outdir=args.outdir, type=args.type)

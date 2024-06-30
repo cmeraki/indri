@@ -2,6 +2,27 @@ import torchaudio
 from encodec.utils import convert_audio, save_audio
 import torch
 import os
+from dataclasses import dataclass
+
+
+@dataclass
+class Sample:
+    audio_path: str = None
+    text: str = None
+    id: str = None
+
+
+def iter_dataset(repo, name, splits):
+    from datasets import load_dataset
+    gs = load_dataset(repo, name, token='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')
+
+    for split in splits:
+        for example in gs[split]:
+            Sample(audio_path=example["audio"]["path"],
+                   text=example["text"],
+                    id=example["segment_id"]
+                   )
+            yield example
 
 
 def read_audio_file(fpath, sample_rate):
@@ -11,20 +32,6 @@ def read_audio_file(fpath, sample_rate):
                              target_sr=sample_rate,
                              target_channels=1)
     return waveform
-
-
-def pad_batch(waveforms):
-    sizes = [waveform.size(0) for waveform in waveforms]
-    max_length = max(sizes)
-
-    padded_waveforms = []
-    for waveform in waveforms:
-        padding = max_length - waveform.size(0)
-        padded_waveform = torch.nn.functional.pad(waveform, (-1, padding))
-        padded_waveforms.append(padded_waveform)
-
-    padded_waveforms = torch.stack(padded_waveforms)
-    return padded_waveforms, sizes
 
 
 def find_audio_files(folder):
@@ -41,3 +48,4 @@ def find_audio_files(folder):
                 audio_files.append(os.path.join(root, file))
 
     return audio_files
+
