@@ -18,10 +18,9 @@ def iter_dataset(repo, name, splits):
 
     for split in splits:
         for example in gs[split]:
-            Sample(audio_path=example["audio"]["path"],
-                   text=example["text"],
-                    id=example["segment_id"]
-                   )
+            example = Sample(audio_path=example["audio"]["path"],
+                             text=example["text"],
+                             id=example["segment_id"])
             yield example
 
 

@@ -26,7 +26,8 @@ def prepare_data():
 
         encode_files(dataset=dataset,
                      outdir=data_dir/dsname/type,
-                     type=type)
+                     type=type,
+                     device=DEVICE)
 
 
 def train_translator(source, target):

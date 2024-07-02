@@ -5,8 +5,8 @@ import numpy as np
 import bark
 import torch
 from encodec.utils import save_audio
-from datalib import semantic_pad_token, acoustic_pad_token, acoustic_vocab_size, semantic_vocab_size
-from tokenlib import EncodecTokenizer
+from datalib import VOCAB_SIZES, PAD_TOKEN, OFFSET
+from tokenlib import EncodecTokenizer, SEMANTIC, ACOUSTIC, TEXT
 
 def load_llm():
     from gpt2_model import GPT, GPTConfig
@@ -53,12 +53,12 @@ def load_llm():
 
     # print(model)
 
-    print("Acoustic pad", acoustic_pad_token)
-    print("Semantic pad", semantic_pad_token)
+    print("Acoustic pad", PAD_TOKEN[ACOUSTIC])
+    print("Semantic pad", PAD_TOKEN[SEMANTIC])
 
     start_ids = np.load('../data/audio_tokens/semantic/AUD0000001381_S0000519.wav.npy')
-    start_ids = start_ids[:250] + acoustic_vocab_size
-    start_ids = np.append(start_ids, semantic_pad_token)
+    start_ids = start_ids[:250] + OFFSET[ACOUSTIC]
+    start_ids = np.append(start_ids, PAD_TOKEN[SEMANTIC])
 
     x = (torch.tensor(start_ids, dtype=torch.long, device=device)[None, ...])
     model.eval()
@@ -72,8 +72,8 @@ def load_llm():
                 y = model.generate(x, max_new_tokens, temperature=temperature, top_k=top_k)
                 y = y.detach().cpu().numpy()[0]
                 # print(list(y))
-                start_idx = np.where(y == semantic_pad_token)[0][0]
-                end_idx = np.where(y == acoustic_pad_token)[0][0]
+                start_idx = np.where(y == PAD_TOKEN[SEMANTIC])[0][0]
+                end_idx = np.where(y == PAD_TOKEN[ACOUSTIC])[0][0]
                 y = y[start_idx + 1: end_idx]
                 # print(y)
                 wav = tokenizer.decode(y)
