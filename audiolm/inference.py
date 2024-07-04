@@ -7,81 +7,84 @@ import torch
 from encodec.utils import save_audio
 from datalib import VOCAB_SIZES, PAD_TOKEN, OFFSET
 from tokenlib import EncodecTokenizer, SEMANTIC, ACOUSTIC, TEXT
+from gpt2_model import get_model
 
-def load_llm():
-    from gpt2_model import GPT, GPTConfig
-    from contextlib import nullcontext
-    import os
-    from tqdm import tqdm
+from contextlib import nullcontext
+import os
+from tqdm import tqdm
+from train_tts import get_vocab_size
+from tokenlib import get_tokenizer
 
-    num_samples = 10 # number of samples to draw
-    max_new_tokens = 1024 # number of tokens generated in each sample
-    temperature = 0.8 # 1.0 = no change, < 1.0 = less random, > 1.0 = more random, in predictions
-    top_k = 100 # retain only the top_k most likely tokens, clamp others to have 0 probability
-    seed = 1337
-    device = 'cuda:0' # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1', etc.
-    dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16' # 'float32' or 'bfloat16' or 'float16'
-    compile = False # use PyTorch 2.0 to compile the model to be faster
+seed = 1337
+torch.manual_seed(seed)
+torch.cuda.manual_seed(seed)
+torch.backends.cuda.matmul.allow_tf32 = True # allow tf32 on matmul
+torch.backends.cudnn.allow_tf32 = True # allow tf32 on cudnn
+device = 'cuda:0' # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1', etc.
+dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16' # 'float32' or 'bfloat16' or 'float16'
 
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    torch.backends.cuda.matmul.allow_tf32 = True # allow tf32 on matmul
-    torch.backends.cudnn.allow_tf32 = True # allow tf32 on cudnn
-    device_type = 'cuda' if 'cuda' in device else 'cpu' # for later use in torch.autocast
-    ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
-    ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
+device_type = 'cuda' if 'cuda' in device else 'cpu' # for later use in torch.autocast
+ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
+ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
 
-    print("Loading model")
-    # model
-    # init from a model saved in a specific directory
-    ckpt_path = os.path.join('out', 'ckpt_gigaspeech_s_20M.pt')
-    checkpoint = torch.load(ckpt_path, map_location=device)
-    gptconf = GPTConfig(**checkpoint['model_args'])
-    model = GPT(gptconf)
-    state_dict = checkpoint['model']
-    unwanted_prefix = '_orig_mod.'
-    for k,v in list(state_dict.items()):
-        if k.startswith(unwanted_prefix):
-            state_dict[k[len(unwanted_prefix):]] = state_dict.pop(k)
-    model.load_state_dict(state_dict)
 
-    print("Loaded model")
-    model.eval()
-    model.to(device)
-    if compile:
-        model = torch.compile(model) # requires PyTorch 2.0 (optional)
+class GPTModel:
+    def __init__(self, source, target, device='cuda:0'):
+        self.source = source
+        self.target = target
+        self.device = device
 
-    # print(model)
+        self.path = f'out/{source}_{target}/gpt_last.pt'
+        self.model = self.load(self.path)
+        self.vocab_size = get_vocab_size(source=source, target=target)
 
-    print("Acoustic pad", PAD_TOKEN[ACOUSTIC])
-    print("Semantic pad", PAD_TOKEN[SEMANTIC])
 
-    start_ids = np.load('../data/audio_tokens/semantic/AUD0000001381_S0000519.wav.npy')
-    start_ids = start_ids[:250] + OFFSET[ACOUSTIC]
-    start_ids = np.append(start_ids, PAD_TOKEN[SEMANTIC])
+    def load(self, path):
+        saved_model = torch.load(path)['model']
 
-    x = (torch.tensor(start_ids, dtype=torch.long, device=device)[None, ...])
-    model.eval()
+        model = get_model(n_layer=8,
+                        n_head=8,
+                        n_embd=512,
+                        vocab_size=get_vocab_size(self.source, self.target),
+                        block_size=1024,
+                        compile=True,
+                        device=self.device)
+        
+        model.load_state_dict(saved_model)
+        model.eval()
+        return model
 
-    tokenizer = EncodecTokenizer()
-
-    # run generation
-    with torch.no_grad():
-        with ctx:
-            for k in tqdm(range(num_samples)):
-                y = model.generate(x, max_new_tokens, temperature=temperature, top_k=top_k)
+    def generate(self, tokens, max_new_tokens=1024, temperature=0.8, top_k=100):
+        with torch.no_grad():
+            with ctx:
+                y = self.model.generate(tokens, max_new_tokens, temperature=temperature, top_k=top_k)
                 y = y.detach().cpu().numpy()[0]
-                # print(list(y))
-                start_idx = np.where(y == PAD_TOKEN[SEMANTIC])[0][0]
-                end_idx = np.where(y == PAD_TOKEN[ACOUSTIC])[0][0]
+                start_idx = np.where(y == PAD_TOKEN[self.source])[0][0]
+                end_idx = np.where(y == PAD_TOKEN[self.target])[0][0]
                 y = y[start_idx + 1: end_idx]
-                # print(y)
-                wav = tokenizer.decode(y)
+        
+        return y
 
-                save_audio(wav[0], f'{k}.wav', sample_rate=24000)
+def run_tts():
+    text_semantic_model = GPTModel(source=TEXT, target=SEMANTIC, device=device)
+    semantic_acoustic_model = GPTModel(source=SEMANTIC, target=ACOUSTIC, device=device)
+    
+    text = "this was the greatest thing to happen since the big bang"
+    text_tokenizer = get_tokenizer(TEXT, device='cpu')
+    text_tokens = np.asarray(text_tokenizer.encode(text)) + OFFSET[TEXT]
+    
+    
+    text_tokens = np.append(text_tokens, PAD_TOKEN[TEXT])
+    text_tokens = (torch.tensor(text_tokens, dtype=torch.long, device=device)[None, ...])
+    semantic_tokens = text_semantic_model.generate(text_tokens)
+    
+    semantic_tokens = np.append(semantic_tokens, PAD_TOKEN[SEMANTIC])
+    semantic_tokens = (torch.tensor(semantic_tokens, dtype=torch.long, device=device)[None, ...])
+    acoustic_tokens = semantic_acoustic_model.generate(semantic_tokens)
+    
+    acoustic_tokenizer = get_tokenizer(ACOUSTIC, device='cpu')
+    wav = acoustic_tokenizer.decode(torch.tensor(acoustic_tokens))
+    save_audio(wav[0], f'tts.wav', sample_rate=24000)
 
 if __name__ == "__main__":
-    # tokens = np.load('data/audio_tokens/74de910e-e10c-418b-8c22-11ab58e5cd13.npy')
-    # print(tokens.shape)
-    # test_generation(tokens)
-    load_llm()
+    run_tts()

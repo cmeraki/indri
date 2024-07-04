@@ -19,9 +19,10 @@ def get_vocab_size(source, target):
     return vocab_size
 
 def prepare_data():
-    for type in (SEMANTIC, ACOUSTIC, TEXT):
+    types = (SEMANTIC, ACOUSTIC, TEXT)
+    for type in types:
         dataset = iter_dataset(repo=dsname,
-                               name='xs',
+                               name='m',
                                splits=['train'])
 
         encode_files(dataset=dataset,
@@ -31,15 +32,19 @@ def prepare_data():
 
 
 def train_translator(source, target):
+    print("===============")
+    print(f"Training {source} {target}".upper())
+    print("===============")
+    
     vocab_size = get_vocab_size(source, target)
     print("Vocab size", vocab_size)
 
-    model = get_model(n_layer=4,
-                      n_head=4,
-                      n_embd=256,
+    model = get_model(n_layer=8,
+                      n_head=8,
+                      n_embd=512,
                       vocab_size=vocab_size,
                       block_size=1024,
-                      compile=False,
+                      compile=True,
                       device=DEVICE)
 
     data_generator = DataLoader(data_dir=data_dir/dsname,
@@ -49,18 +54,19 @@ def train_translator(source, target):
     gpt_train(model,
               get_batch=data_generator.get_batch,
               out_dir=f'{out_dir}/{source}_{target}',
-              steps=300,
+              steps=16000,
               block_size=1024,
               eval_interval=200,
               eval_steps=100,
-              batch_size=32,
+              batch_size=16,
+              grad_accum_steps=16,
               device=DEVICE)
 
 
 def train():
     # prepare_data()
     train_translator(TEXT, SEMANTIC)
-    train_translator(SEMANTIC, ACOUSTIC)
+    # train_translator(SEMANTIC, ACOUSTIC)
 
 if __name__ == '__main__':
     train()

@@ -81,13 +81,15 @@ def train(model,
     eval_batches = [get_batch('val', batch_size=batch_size, block_size=block_size, device=device) for i in range(eval_steps)]
     X, Y = get_batch('train', block_size=block_size, batch_size=batch_size, device=device)
 
-    for iter_num in tqdm(range(steps)):
+    all_losses = {}
+
+    for iter_num in (pbar := tqdm(range(steps))):
         for param_group in optimizer.param_groups:
             param_group['lr'] = get_lr(iter_num)
 
         if iter_num % eval_interval == 0:
             losses = estimate_loss(model, ctx, eval_batches)
-            print(f"step {iter_num}: val loss {losses:.4f}")
+            all_losses['val'] = losses
             model_fname = f"{out_dir}/gpt_{iter_num}.pt"
             torch.save({"model":  model.state_dict()}, model_fname)
 
@@ -110,7 +112,9 @@ def train(model,
         dt = t1 - t0
         t0 = t1
         lossf = loss.item() * grad_accum_steps
-        print(f"iter {iter_num}: loss {lossf:.4f}, time {dt*1000:.2f}ms")
+        all_losses['train'] = lossf
+        loss_string = f"train: {all_losses['train']:.4f} val: {all_losses['val']:.4f}"
+        pbar.set_description(loss_string)
         iter_num += 1
         local_iter_num += 1
 

@@ -73,8 +73,8 @@ class HubertTokenizer:
         greedy_output = min_dist.indices.T.cpu().numpy()[0]
         return greedy_output
 
-    def decode(self):
-        raise NotImplementedError
+    def decode(self, tokens):
+        return tokens
 
 
 class TextTokenizer:
