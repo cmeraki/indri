@@ -35,7 +35,8 @@ class HubertTokenizer:
         self.processor = Wav2Vec2FeatureExtractor.from_pretrained("voidful/mhubert-base")
         self.hubert_model = HubertModel.from_pretrained("voidful/mhubert-base")
 
-        kmeans_path = hf_hub_download(repo_id='voidful/mhubert-base', filename='mhubert_base_vp_en_es_fr_it3_L11_km1000.bin')
+        kmeans_path = hf_hub_download(repo_id='voidful/mhubert-base',
+                                      filename='mhubert_base_vp_en_es_fr_it3_L11_km1000.bin')
 
         self.output_layer = 11
 
@@ -178,7 +179,7 @@ def encode_files(dataset, outdir, type, device):
     outdir.mkdir(exist_ok=True, parents=True)
     tokenizer = get_tokenizer(type, device)
 
-    for example in tqdm(dataset):
+    for example in tqdm(dataset, desc='encoding dataset'):
         segment_id = example.id
         outpath = outdir / segment_id
 

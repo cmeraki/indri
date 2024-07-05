@@ -18,12 +18,12 @@ from tokenlib import get_tokenizer
 seed = 1337
 torch.manual_seed(seed)
 torch.cuda.manual_seed(seed)
-torch.backends.cuda.matmul.allow_tf32 = True # allow tf32 on matmul
-torch.backends.cudnn.allow_tf32 = True # allow tf32 on cudnn
-device = 'cuda:0' # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1', etc.
-dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16' # 'float32' or 'bfloat16' or 'float16'
+torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32 = True
+device = 'cuda:0'
+dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16'
 
-device_type = 'cuda' if 'cuda' in device else 'cpu' # for later use in torch.autocast
+device_type = 'cuda' if 'cuda' in device else 'cpu'
 ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
 ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
 
@@ -37,7 +37,6 @@ class GPTModel:
         self.path = f'out/{source}_{target}/gpt_last.pt'
         self.model = self.load(self.path)
         self.vocab_size = get_vocab_size(source=source, target=target)
-
 
     def load(self, path):
         saved_model = torch.load(path)['model']
@@ -65,6 +64,7 @@ class GPTModel:
         
         return y
 
+
 def run_tts():
     text_semantic_model = GPTModel(source=TEXT, target=SEMANTIC, device=device)
     semantic_acoustic_model = GPTModel(source=SEMANTIC, target=ACOUSTIC, device=device)
@@ -72,7 +72,6 @@ def run_tts():
     text = "this was the greatest thing to happen since the big bang"
     text_tokenizer = get_tokenizer(TEXT, device='cpu')
     text_tokens = np.asarray(text_tokenizer.encode(text)) + OFFSET[TEXT]
-    
     
     text_tokens = np.append(text_tokens, PAD_TOKEN[TEXT])
     text_tokens = (torch.tensor(text_tokens, dtype=torch.long, device=device)[None, ...])
@@ -85,6 +84,7 @@ def run_tts():
     acoustic_tokenizer = get_tokenizer(ACOUSTIC, device='cpu')
     wav = acoustic_tokenizer.decode(torch.tensor(acoustic_tokens))
     save_audio(wav[0], f'tts.wav', sample_rate=24000)
+
 
 if __name__ == "__main__":
     run_tts()
