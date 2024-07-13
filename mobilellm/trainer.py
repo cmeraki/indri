@@ -44,7 +44,7 @@ def estimate_loss(model, ctx, eval_batches):
     losses = torch.zeros(len(eval_batches))
     for k, (X, Y) in enumerate(eval_batches):
         with ctx:
-            logits, loss = model(X, Y)
+            logits, loss = model(X, targets=Y)
         losses[k] = loss.item()
     out = losses.mean()
     model.train()
@@ -95,7 +95,7 @@ def train(model,
 
         for micro_step in range(grad_accum_steps):
             with ctx:
-                logits, loss = model(X, Y)
+                logits, loss = model(X, targets=Y)
                 loss = loss / grad_accum_steps
             X, Y = get_batch('train', block_size=block_size, batch_size=batch_size, device=device)
             scaler.scale(loss).backward()
@@ -129,18 +129,17 @@ def dummy_get_batch(split, block_size, batch_size, device):
 
 
 if __name__ == '__main__':
-    from gpt2_model import get_model
-    model = get_model(n_layer=4,
-                      n_head=4,
-                      n_embd=256,
-                      vocab_size=3072,
-                      block_size=1024)
+    from mobile_gpt import GPT
+    from config import Config
 
-    train(model,
+    cfg = Config.from_name('mobilellm')
+    gpt = GPT(config=cfg)
+
+    train(gpt,
           get_batch=dummy_get_batch,
           out_dir='out',
           steps=3000,
-          block_size=1024,
+          block_size=256,
           eval_interval=5,
           eval_steps=4,
-          batch_size=64)
+          batch_size=2)

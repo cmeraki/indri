@@ -70,6 +70,36 @@ class DataLoader:
         return flat_arr
 
     def load_batch(self, split, block_size, batch_size):
+        if self.source == self.target:
+            return  self.load_batch_lm(split, block_size, batch_size)
+        else:
+            return self.load_batch_trans(split, block_size, batch_size)
+
+    def load_batch_lm(self, split, block_size, batch_size):
+        target = self.target
+
+        some_filenames = random.sample(self.filenames[split], batch_size)
+        x = np.zeros(shape=(batch_size, block_size), dtype=np.int64)
+        y = np.zeros(shape=(batch_size, block_size), dtype=np.int64)
+
+        # prepopulate with pad tokens
+        # so we don't have to pad later
+        x = x + PAD_TOKEN[target]
+        y = y + PAD_TOKEN[target]
+
+        for i in range(batch_size):
+            f = some_filenames[i]
+            target_arr = np.load(self.files[target][f])
+            target_arr = target_arr + OFFSET[target]
+
+            _x = target_arr[:block_size]
+            _y = target_arr[1:block_size + 1]
+            x[i][:len(_x)] = _x
+            y[i][:len(_y)] = _y
+
+        return x, y
+
+    def load_batch_trans(self, split, block_size, batch_size):
         source = self.source
         target = self.target
 
