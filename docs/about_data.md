@@ -24,3 +24,7 @@ This doc covers the kind of data and tasks we would want to collect for training
 4. Multimodal in/out
    1. Text+Audio input, Text output = Tell me which bird is this <Audio>...
    2. Text+Audio input, Audio output = Summarize this speech in the same voice as the speaker <Audio>... <Audio>
+
+## Links for later reference
+
+1. [Kayra](https://karya.in/) - This company helps collect data
