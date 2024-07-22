@@ -29,3 +29,13 @@ https://huggingface.co/datasets/facebook/multilingual_librispeech
 https://www.openslr.org/resources.php
 
 https://huggingface.co/datasets/capleaf/viVoice
+
+https://github.com/jim-schwoebel/voice_datasets
+
+Visual multimodal
+https://huggingface.co/datasets/nyu-visionx/Cambrian-10M
+
+Text instruct sources : 
+https://huggingface.co/datasets/laion/OIG
+https://huggingface.co/datasets/BAAI/Infinity-Instruct
+

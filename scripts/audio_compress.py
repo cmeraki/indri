@@ -46,7 +46,7 @@ def compress_dir(input_dir, output_dir):
         if p not in made_dirs:
             os.makedirs(p, exist_ok=True)
             made_dirs.add(p)
-    
+
     file_list = list(zip(files, output_filepaths))
 
     with Pool(processes=8) as pool:
