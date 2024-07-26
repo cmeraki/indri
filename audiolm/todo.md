@@ -7,3 +7,9 @@ Workbook
 3. if 2 works then take a text only gpt2 and extend it to audio. 
 4. fast tokenization in large amounts with hubert and encodec required
 
+Jul 22
+=======
+1. get pretrained gpt2 124m for 400b, perform surgery to add tokens, finetune on instruct to test fting
+2. Tokenize all audio, text and images
+3. continue pretraining on 20B text+images+audio => 60B tokens
+4. FT on ASR, TTS, Image generation, image captioning tasks
