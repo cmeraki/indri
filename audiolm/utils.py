@@ -10,6 +10,7 @@ class Sample:
     audio_path: str = None
     text: str = None
     id: str = None
+    image_path: str = None
 
 
 def iter_dataset(repo, name, splits):

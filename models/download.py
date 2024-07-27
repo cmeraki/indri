@@ -2,7 +2,6 @@ from huggingface_hub import snapshot_download
 from os import getenv
 
 token = getenv('HF_TOKEN')
-
 print("Token", token)
 
 if (not token) or token[:3]!='hf_':

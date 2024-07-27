@@ -4,7 +4,7 @@ import torch
 import random
 
 from pathlib import Path
-from tokenlib import SEMANTIC, ACOUSTIC, TEXT
+from tokenlib import SEMANTIC, ACOUSTIC, TEXT, IMAGE
 
 coarse_codebooks = 2
 per_codebook_size = 1024
@@ -12,19 +12,22 @@ per_codebook_size = 1024
 VOCAB_SIZES = {
     SEMANTIC: 1000,
     ACOUSTIC: 2048,
-    TEXT: 32000
+    TEXT: 32000,
+    IMAGE: 1024
 }
 
 PAD_TOKEN = {
     SEMANTIC: 3049,
     ACOUSTIC: 3050,
-    TEXT: 3051
+    TEXT: 3051,
+    IMAGE: 1025
 }
 
 OFFSET = {
     SEMANTIC: 2048,
     ACOUSTIC: 0,
-    TEXT: 3052
+    TEXT: 3052,
+    IMAGE: 0
 }
 
 

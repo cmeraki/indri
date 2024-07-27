@@ -1,17 +1,19 @@
 import torch
-import faiss
+import os
 
 import numpy as np
 
-from huggingface_hub import hf_hub_download
+from huggingface_hub import hf_hub_download, snapshot_download
 from encodec import EncodecModel
 from transformers import HubertModel, Wav2Vec2FeatureExtractor, AutoTokenizer
+from image.img_tokenizer import ImageTokenizer
 
 import joblib
 import bark
 import torchaudio
 from pathlib import Path
 from tqdm import tqdm
+from PIL import Image
 from encodec.utils import convert_audio
 
 torch.backends.cuda.matmul.allow_tf32 = True
@@ -21,6 +23,7 @@ torch.amp.autocast(device_type='cuda', dtype='bfloat16')
 SEMANTIC = 'semantic'
 ACOUSTIC = 'acoustic'
 TEXT = 'text'
+IMAGE = 'image'
 
 
 class HubertTokenizer:
@@ -158,6 +161,31 @@ class EncodecTokenizer:
         return wav
 
 
+class ChameleonImageTokenizer:
+    def __init__(self, device):
+        self.type = IMAGE
+        self.device = device
+        self.token = os.getenv('HF_TOKEN')
+
+        cfg_path = hf_hub_download(repo_id='cmeraki/chameleon_tokenizer',
+                                    filename='vqgan.yaml', token=self.token)
+
+        ckpt_path = hf_hub_download(repo_id='cmeraki/chameleon_tokenizer',
+                                      filename='vqgan.ckpt', token=self.token)
+
+        self.tokenizer = ImageTokenizer(device=self.device,
+                                        cfg_path=cfg_path,
+                                        ckpt_path=ckpt_path)
+
+    def encode(self, pil_image):
+        tokens = self.tokenizer.img_tokens_from_pil(pil_image)
+        tokens = tokens.detach().cpu().numpy().astype(np.uint16)
+        return tokens
+
+    def decode(self, tokens):
+        return self.tokenizer.pil_from_img_toks(tokens)
+
+
 def get_tokenizer(type, device):
     tokenizer = None
     if type == SEMANTIC:
@@ -168,6 +196,9 @@ def get_tokenizer(type, device):
 
     if type == TEXT:
         tokenizer = TextTokenizer()
+
+    if type == IMAGE:
+        tokenizer = ChameleonImageTokenizer(device=device)
 
     return tokenizer
 
@@ -202,7 +233,14 @@ def encode_files(dataset, outdir, type, device):
                 tokens = tokenizer.encode(waveform)
                 np.save(outpath, tokens)
 
-        except:
+            if type == IMAGE:
+                image_path = example.image_path
+                image = Image.open(image_path)
+                tokens = tokenizer.encode(image)
+                np.save(outpath, tokens)
+
+        except Exception as e:
+            print(e)
             print("Error processing", segment_id)
 
 

@@ -24,7 +24,7 @@ def prepare_data():
     types = (SEMANTIC, ACOUSTIC, TEXT)
     for type in types:
         dataset = iter_dataset(repo=dsname,
-                               name='m',
+                               name='s',
                                splits=['train'])
 
         encode_files(dataset=dataset,
@@ -41,9 +41,9 @@ def train_translator(source, target):
     vocab_size = get_vocab_size(source, target)
     print("Vocab size", vocab_size)
 
-    model = get_model(n_layer=8,
-                      n_head=8,
-                      n_embd=512,
+    model = get_model(n_layer=4,
+                      n_head=4,
+                      n_embd=256,
                       vocab_size=vocab_size,
                       block_size=1024,
                       compile=True,
@@ -66,9 +66,11 @@ def train_translator(source, target):
 
 
 def train():
-    prepare_data()
-    train_translator(TEXT, SEMANTIC)
-    train_translator(SEMANTIC, ACOUSTIC)
+    # prepare_data()
+    # train_translator(TEXT, SEMANTIC)
+    # train_translator(SEMANTIC, ACOUSTIC)
+    train_translator(SEMANTIC, TEXT)
+
 
 if __name__ == '__main__':
     train()
