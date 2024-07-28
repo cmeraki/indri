@@ -26,7 +26,7 @@ def get_lr(it):
     warmup_iters = 2000
     lr_decay_iters = 600000
     min_lr = 6e-5
-    learning_rate = 6e-4
+    learning_rate = 6e-3
 
     if it < warmup_iters:
         return learning_rate * it / warmup_iters

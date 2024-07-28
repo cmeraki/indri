@@ -12,21 +12,21 @@ per_codebook_size = 1024
 VOCAB_SIZES = {
     SEMANTIC: 1000,
     ACOUSTIC: 2048,
-    TEXT: 32000,
-    IMAGE: 1024
+    TEXT: 50257,
+    IMAGE: 8192
 }
 
 PAD_TOKEN = {
     SEMANTIC: 3049,
     ACOUSTIC: 3050,
-    TEXT: 3051,
-    IMAGE: 1025
+    TEXT: 58494,
+    IMAGE: 8255,
 }
 
 OFFSET = {
     SEMANTIC: 2048,
     ACOUSTIC: 0,
-    TEXT: 3052,
+    TEXT: 0,
     IMAGE: 0
 }
 
@@ -150,9 +150,13 @@ class DataLoader:
             x, y = x.to(device), y.to(device)
         return x, y
 
-# from tqdm import tqdm
+from tqdm import tqdm
+dataloader = DataLoader(data_dir='../data/tokens/laion_coco/',
+                            source=TEXT,
+                            target=IMAGE)
+
 # for i in tqdm(range(1000)):
-#     x, y = get_batch(split='train', device='cuda:0', block_size=1024, batch_size=1, type=(TEXT, SEMANTIC))
+#     x, y = dataloader.get_batch(split='train', device='cuda:0', block_size=1280, batch_size=1)
 #     print(list(x[0].cpu().numpy()))
 
 # print(batch)

@@ -86,7 +86,7 @@ class TextTokenizer:
         self.type = TEXT
         # self.tokenizer = AutoTokenizer.from_pretrained('TheBloke/Llama-2-7B-Chat-GPTQ')
         self.tokenizer = AutoTokenizer.from_pretrained('mdouglas/llmc-gpt2-124M-400B')
-
+        print("text vocab size", self.tokenizer.vocab_size)
     def encode(self, text: str):
         tokens = self.tokenizer.encode(text)
         return tokens

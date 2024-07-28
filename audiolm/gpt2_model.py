@@ -270,7 +270,30 @@ class GPT(nn.Module):
             idx = torch.cat((idx, idx_next), dim=1)
 
         return idx
+    
+    def expand_vocab(self, new_vocab_size):
 
+        print("Updating embeddings", f"{self.config.vocab_size, self.config.n_embd} => {new_vocab_size, self.config.n_embd}")
+        old_vocab_size = self.config.vocab_size
+
+        old_embeddings = self.transformer.wte.weight
+        new_embeddings = torch.Tensor(new_vocab_size, self.config.n_embd)
+
+        # https://nlp.stanford.edu/~johnhew/vocab-expansion.html
+
+        mu = torch.mean(old_embeddings, dim=0)
+        sigma = ((old_embeddings - mu).T @ (old_embeddings - mu)) / old_vocab_size
+        dist = torch.distributions.multivariate_normal.MultivariateNormal(
+            mu, covariance_matrix=1e-5 * sigma)
+
+        new_embeddings[:old_vocab_size] = self.transformer.wte.weight
+        new_embeddings[old_vocab_size:] = torch.stack(tuple((dist.sample() for _ in range(new_vocab_size-old_vocab_size))), dim=0)
+
+        self.transformer.wte = nn.Embedding(_weight=new_embeddings, num_embeddings=new_vocab_size, embedding_dim=self.config.n_embd)
+
+        self.lm_head = nn.Linear(self.config.n_embd, new_vocab_size, bias=False)
+        self.lm_head.weight = self.transformer.wte.weight
+    
 
 def get_model(n_layer=4,
               n_head=4,

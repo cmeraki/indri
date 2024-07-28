@@ -1,16 +1,17 @@
 import glob
 
 from gpt2_trainer import train as gpt_train
-from gpt2_model import get_model
+from gpt2_model import get_model, GPT
 from tokenlib import SEMANTIC, TEXT, IMAGE, encode_files
 from utils import iter_dataset
 
-from datalib import DataLoader, VOCAB_SIZES, OFFSET
+from datalib import DataLoader, VOCAB_SIZES, OFFSET, PAD_TOKEN
 from pathlib import Path
 import zipfile
 import io
 from tqdm import tqdm
 from utils import Sample
+import torch
 
 dsname = 'laion_coco'
 image_dataset_dir = '/media/apurva/data/data/images/laion-coco-aesthetic/'
@@ -20,10 +21,11 @@ out_dir = Path('out')
 DEVICE = 'cuda:0'
 
 def get_vocab_size(source, target):
-    end = max(OFFSET[source] + VOCAB_SIZES[source], OFFSET[target] + VOCAB_SIZES[target])
-    vocab_size = end + 3
-    print(end, vocab_size)
-    return vocab_size
+    vocab_size = max([OFFSET[source] + VOCAB_SIZES[source],
+                      OFFSET[target] + VOCAB_SIZES[target],
+                      PAD_TOKEN[source], 
+                      PAD_TOKEN[target]]) + 1
+    return vocab_size 
 
 
 def stream_from_zip(zip_file_path, extension):
@@ -93,10 +95,17 @@ def train_translator(source, target):
 
     vocab_size = get_vocab_size(source, target)
     print("Vocab size", vocab_size)
-
-    model = get_model(n_layer=4,
-                      n_head=4,
-                      n_embd=256,
+    
+    # model = GPT.from_pretrained('mdouglas/llmc-gpt2-124M-400B')
+    
+    # model.expand_vocab(vocab_size)
+    
+    # model = model.to(DEVICE)
+    # model = torch.compile(model)
+    
+    model = get_model(n_layer=8,
+                      n_head=8,
+                      n_embd=512,
                       vocab_size=vocab_size,
                       block_size=1024,
                       compile=True,
@@ -109,18 +118,19 @@ def train_translator(source, target):
     gpt_train(model,
               get_batch=data_generator.get_batch,
               out_dir=f'{out_dir}/{source}_{target}',
-              steps=16000,
+              steps=600000,
               block_size=1024,
-              eval_interval=200,
+              eval_interval=10000,
               eval_steps=100,
               batch_size=16,
-              grad_accum_steps=16,
+              grad_accum_steps=2,
               device=DEVICE)
 
 
 def train():
     # prepare_data()
-    train_translator(TEXT, IMAGE)
+    # train_translator(TEXT, IMAGE)
+    train_translator(IMAGE, IMAGE)
     # train_translator(SEMANTIC, ACOUSTIC)
 
 
