@@ -21,16 +21,22 @@ def get_vocab_size(source, target):
     print(end, vocab_size)
     return vocab_size
 
-def iter_dataset():
-    from datasets import load_dataset
-    # gs = load_dataset('Isotonic/human_assistant_conversation', token='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')
-    # splits = ['test']
 
-    dataset = pd.read_parquet('test.parquet')
+def iter_dataset():
+    from huggingface_hub import snapshot_download
+    files = ['train.csv', 'test.csv']
+    path = None
+    for f in files:
+        path = snapshot_download(repo_id='Isotonic/human_assistant_conversation',
+                                 repo_type='dataset',
+                                 allow_patterns='*.csv')
+
+    path = Path(path)
+    dataset = pd.read_csv(path / 'test.csv')
     print(dataset)
 
     idx = 0
-    for example in dataset['text']:
+    for example in dataset['texts']:
         idx += 1
         example = Sample(audio_path="",
                          text=example,
@@ -58,6 +64,7 @@ def train_translator(source, target):
     print("Vocab size", vocab_size)
 
     model = GPT.from_pretrained('mdouglas/llmc-gpt2-124M-400B')
+    print(model)
 
     data_generator = DataLoader(data_dir=data_dir / dsname,
                                 source=source,

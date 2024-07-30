@@ -13,3 +13,7 @@ Jul 22
 2. Tokenize all audio, text and images
 3. continue pretraining on 20B text+images+audio => 60B tokens
 4. FT on ASR, TTS, Image generation, image captioning tasks
+
+Build a UI to try speech to text and text to speech. 
+Try longer text and speech : streaming
+400b finetuned model doing audio in and audio out

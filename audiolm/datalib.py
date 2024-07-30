@@ -19,7 +19,7 @@ VOCAB_SIZES = {
 PAD_TOKEN = {
     SEMANTIC: 3049,
     ACOUSTIC: 3050,
-    TEXT: 58494,
+    TEXT: 50256,
     IMAGE: 8255,
 }
 
@@ -93,6 +93,7 @@ class DataLoader:
         for i in range(batch_size):
             f = some_filenames[i]
             target_arr = np.load(self.files[target][f])
+            target_arr = target_arr[0:self.max_source_tokens]
             target_arr = target_arr + OFFSET[target]
 
             _x = target_arr[:block_size]
