@@ -21,7 +21,7 @@ def get_vocab_size(source, target):
 
 
 def prepare_data():
-    types = (SEMANTIC, ACOUSTIC, TEXT)
+    types = [TEXT]
     for type in types:
         dataset = iter_dataset(repo=dsname,
                                name='s',
@@ -66,8 +66,8 @@ def train_translator(source, target):
 
 
 def train():
-    # prepare_data()
-    # train_translator(TEXT, SEMANTIC)
+    prepare_data()
+    train_translator(TEXT, SEMANTIC)
     # train_translator(SEMANTIC, ACOUSTIC)
     train_translator(SEMANTIC, TEXT)
 

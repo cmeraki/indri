@@ -194,7 +194,7 @@ class GPT(nn.Module):
 
 
     @classmethod
-    def from_pretrained(cls, model_type):
+    def from_pretrained(cls, model_type, weights=None):
         """Loads pretrained GPT-2 model weights from huggingface"""
         assert model_type in {'gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl', 'mdouglas/llmc-gpt2-124M-400B'}
         from transformers import GPT2LMHeadModel

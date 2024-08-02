@@ -41,6 +41,7 @@ def iter_dataset():
         example = Sample(audio_path="",
                          text=example,
                          id=f"id_{idx}")
+        print(example)
         yield example
 
 
