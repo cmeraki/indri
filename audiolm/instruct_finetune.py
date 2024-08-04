@@ -16,9 +16,7 @@ DEVICE = 'cpu'
 
 
 def get_vocab_size(source, target):
-    end = max(OFFSET[source] + VOCAB_SIZES[source], OFFSET[target] + VOCAB_SIZES[target])
-    vocab_size = end + 3
-    print(end, vocab_size)
+    vocab_size = max(OFFSET[source] + VOCAB_SIZES[source], OFFSET[target] + VOCAB_SIZES[target], PAD_TOKEN[source], PAD_TOKEN[target])
     return vocab_size
 
 
@@ -64,7 +62,7 @@ def train_translator(source, target):
     vocab_size = get_vocab_size(source, target)
     print("Vocab size", vocab_size)
 
-    model = GPT.from_pretrained('mdouglas/llmc-gpt2-124M-400B')
+    model = GPT.from_pretrained('cmeraki/gpt2-124M-400B')
     print(model)
 
     data_generator = DataLoader(data_dir=data_dir / dsname,

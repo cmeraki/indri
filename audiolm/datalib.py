@@ -10,26 +10,25 @@ coarse_codebooks = 2
 per_codebook_size = 1024
 
 VOCAB_SIZES = {
+    TEXT: 50257,
     SEMANTIC: 1000,
     ACOUSTIC: 2048,
-    TEXT: 50257,
     IMAGE: 8192
 }
 
-PAD_TOKEN = {
-    SEMANTIC: 3049,
-    ACOUSTIC: 3050,
-    TEXT: 50256,
-    IMAGE: 8255,
-}
-
 OFFSET = {
-    SEMANTIC: 2048,
-    ACOUSTIC: 0,
     TEXT: 0,
+    SEMANTIC: VOCAB_SIZES[TEXT],
+    ACOUSTIC: VOCAB_SIZES[SEMANTIC],
     IMAGE: 0
 }
 
+PAD_TOKEN = {
+    TEXT: 50256,
+    SEMANTIC: OFFSET[SEMANTIC] + VOCAB_SIZES[SEMANTIC],
+    ACOUSTIC: 3050,
+    IMAGE: 8255,
+}
 
 class DataLoader:
     def __init__(self, data_dir, source, target, max_source_tokens=256):
@@ -149,12 +148,13 @@ class DataLoader:
             x, y = x.pin_memory().to(device, non_blocking=True), y.pin_memory().to(device, non_blocking=True)
         else:
             x, y = x.to(device), y.to(device)
+        
         return x, y
 
-from tqdm import tqdm
-dataloader = DataLoader(data_dir='../data/tokens/laion_coco/',
-                            source=TEXT,
-                            target=IMAGE)
+# from tqdm import tqdm
+# dataloader = DataLoader(data_dir='../data/tokens/laion_coco/',
+#                             source=TEXT,
+#                             target=IMAGE)
 
 # for i in tqdm(range(1000)):
 #     x, y = dataloader.get_batch(split='train', device='cuda:0', block_size=1280, batch_size=1)
