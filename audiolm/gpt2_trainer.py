@@ -121,6 +121,7 @@ def train(model,
     model_fname = f"{out_dir}/gpt_last.pt"
     torch.save({"model": model.state_dict()}, model_fname)
 
+    return model_fname
 
 def dummy_get_batch(split, block_size, batch_size, device):
     X = torch.zeros(batch_size, block_size, dtype=torch.long).to(device)

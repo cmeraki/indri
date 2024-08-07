@@ -18,7 +18,7 @@ from encodec.utils import convert_audio
 
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
-torch.amp.autocast(device_type='cuda', dtype='bfloat16')
+torch.amp.autocast(device_type='cuda', dtype=torch.bfloat16)
 
 SEMANTIC = 'semantic'
 ACOUSTIC = 'acoustic'

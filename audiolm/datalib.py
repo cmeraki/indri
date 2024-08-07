@@ -13,21 +13,18 @@ VOCAB_SIZES = {
     TEXT: 50257,
     SEMANTIC: 1000,
     ACOUSTIC: 2048,
-    IMAGE: 8192
 }
 
 OFFSET = {
     TEXT: 0,
     SEMANTIC: VOCAB_SIZES[TEXT],
     ACOUSTIC: VOCAB_SIZES[SEMANTIC],
-    IMAGE: 0
 }
 
 PAD_TOKEN = {
     TEXT: 50256,
     SEMANTIC: OFFSET[SEMANTIC] + VOCAB_SIZES[SEMANTIC],
     ACOUSTIC: 3050,
-    IMAGE: 8255,
 }
 
 class DataLoader:
@@ -150,14 +147,3 @@ class DataLoader:
             x, y = x.to(device), y.to(device)
         
         return x, y
-
-# from tqdm import tqdm
-# dataloader = DataLoader(data_dir='../data/tokens/laion_coco/',
-#                             source=TEXT,
-#                             target=IMAGE)
-
-# for i in tqdm(range(1000)):
-#     x, y = dataloader.get_batch(split='train', device='cuda:0', block_size=1280, batch_size=1)
-#     print(list(x[0].cpu().numpy()))
-
-# print(batch)
