@@ -6,7 +6,6 @@ import numpy as np
 from huggingface_hub import hf_hub_download, snapshot_download
 from encodec import EncodecModel
 from transformers import HubertModel, Wav2Vec2FeatureExtractor, AutoTokenizer
-from image.img_tokenizer import ImageTokenizer
 
 import joblib
 import bark
@@ -23,8 +22,10 @@ torch.amp.autocast(device_type='cuda', dtype=torch.bfloat16)
 SEMANTIC = 'semantic'
 ACOUSTIC = 'acoustic'
 TEXT = 'text'
+AUDIO = 'audio'
 IMAGE = 'image'
-
+ANNOTATIONS = 'annotation'
+TOKENS = 'tokens'
 
 class HubertTokenizer:
     def __init__(self, device='cpu'):

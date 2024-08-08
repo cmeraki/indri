@@ -1,28 +1,6 @@
 import torchaudio
-from encodec.utils import convert_audio, save_audio
-import torch
 import os
-from dataclasses import dataclass
-
-
-@dataclass
-class Sample:
-    audio_path: str = None
-    text: str = None
-    id: str = None
-    image_path: str = None
-
-
-def iter_dataset(repo, name, splits):
-    from datasets import load_dataset
-    gs = load_dataset(repo, name, token='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')
-
-    for split in splits:
-        for example in gs[split]:
-            example = Sample(audio_path=example["audio"]["path"],
-                             text=example["text"],
-                             id=example["segment_id"])
-            yield example
+import torch
 
 
 def read_audio_file(fpath, sample_rate):
@@ -32,6 +10,19 @@ def read_audio_file(fpath, sample_rate):
                              target_sr=sample_rate,
                              target_channels=1)
     return waveform
+
+
+def convert_audio(wav: torch.Tensor, sr: int, target_sr: int, target_channels: int):
+    assert wav.shape[0] in [1, 2], "Audio must be mono or stereo."
+    if target_channels == 1:
+        wav = wav.mean(0, keepdim=True)
+    elif target_channels == 2:
+        *shape, _, length = wav.shape
+        wav = wav.expand(*shape, target_channels, length)
+    elif wav.shape[0] == 1:
+        wav = wav.expand(target_channels, -1)
+    wav = torchaudio.transforms.Resample(sr, target_sr)(wav)
+    return wav
 
 
 def find_audio_files(folder):

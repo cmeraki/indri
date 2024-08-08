@@ -1,149 +1,146 @@
-import numpy as np
-import glob
-import torch
-import random
+import json
 
+from dataclasses import dataclass, asdict
+from audiolm.tokenlib import TEXT, SEMANTIC, ACOUSTIC, AUDIO, ANNOTATIONS, TOKENS
+import tarfile
+import os
 from pathlib import Path
-from tokenlib import SEMANTIC, ACOUSTIC, TEXT, IMAGE
+from huggingface_hub import hf_hub_download
+from huggingface_hub import upload_file, create_repo
 
-coarse_codebooks = 2
-per_codebook_size = 1024
 
-VOCAB_SIZES = {
-    TEXT: 50257,
-    SEMANTIC: 1000,
-    ACOUSTIC: 2048,
-}
+@dataclass
+class Sample:
+    id: str = None
+    raw_text: str = None
+    speaker_id: str = None
 
-OFFSET = {
-    TEXT: 0,
-    SEMANTIC: VOCAB_SIZES[TEXT],
-    ACOUSTIC: VOCAB_SIZES[SEMANTIC],
-}
+    audio_path: str = None
+    semantic_tokens: str = None
+    acoustic_tokens: str = None
+    text_tokens: str = None
 
-PAD_TOKEN = {
-    TEXT: 50256,
-    SEMANTIC: OFFSET[SEMANTIC] + VOCAB_SIZES[SEMANTIC],
-    ACOUSTIC: 3050,
-}
+    def from_json(self, jss):
+        self.__dict__ = json.loads(jss)
+        return self
 
-class DataLoader:
-    def __init__(self, data_dir, source, target, max_source_tokens=256):
-        self.data_dir = data_dir
-        self.source = source
-        self.target = target
-        self.files, self.filenames = self.load_files()
-        self.max_source_tokens = max_source_tokens
+    def to_json(self):
+        return json.dumps(asdict(self))
 
-    def load_files(self):
-        files = {}
-        filenames = None
 
-        for type in [self.source, self.target]:
-            # create a dictionary of name: filepath mapping
-            files[type] = {Path(f).name: Path(f) for f in glob.glob(f"{self.data_dir}/{type}/*.npy")}
+class Dataset:
+    def __init__(self,
+                 repo_id,
+                 base_path=Path.home() / '.cache/indri/'):
 
-            if not filenames:
-                filenames = set(files[type].keys())
+        self.base_path = base_path
+        self.base_path.mkdir(exist_ok=True)
 
-            filenames = filenames.intersection(set(files[type].keys()))
+        self.repo_id = repo_id
+        self.local_path = base_path / self.repo_id
+        self.local_path.mkdir(exist_ok=True)
 
-        filenames = list(filenames)
+        self.dirs = {
+                        ACOUSTIC: self.local_path / TOKENS / ACOUSTIC,
+                        SEMANTIC: self.local_path / TOKENS / SEMANTIC,
+                        TEXT: self.local_path / TOKENS / TEXT,
+                        AUDIO: self.local_path / AUDIO,
+                        ANNOTATIONS: self.local_path / ANNOTATIONS
+                    }
 
-        filenames = {
-            'train': filenames[1000:],
-            'val': filenames[:1000]
-        }
+        for dir in self.dirs.values():
+            print("dir=", dir)
+            Path(dir).mkdir(exist_ok=True, parents=True)
 
-        return files, filenames
+        self.metadata_path = self.local_path / ANNOTATIONS / 'metadata.jsonl'
+        self.metadata_writer = open(self.metadata_path, 'a')
 
-    @staticmethod
-    def codebook_encoding(arr: torch.tensor,
-                          per_codebook_size: int):
+        self.hf_token = os.getenv('HF_TOKEN_CMERAKI')
+        self.hf_user = 'cmeraki'
 
-        # interleave n codebooks as 1
-        c, n = arr.shape
-        i_values = np.arange(c) * per_codebook_size
-        arr += i_values.reshape(c, 1)
-        flat_arr = arr.reshape(c*n, order='F')
-        return flat_arr
+    def download(self, hf_repo_id=None):
+        if hf_repo_id is None:
+            hf_repo_id = self.repo_id
 
-    def load_batch(self, split, block_size, batch_size):
-        if self.source == self.target:
-            return  self.load_batch_lm(split, block_size, batch_size)
-        else:
-            return self.load_batch_trans(split, block_size, batch_size)
+        for name in self.dirs:
+            tar_name = f'{name}.tar'
+            hf_hub_download(repo_id=f'{self.hf_user}/{hf_repo_id}',
+                            token=self.hf_token,
+                            local_dir=self.local_path,
+                            filename=tar_name)
 
-    def load_batch_lm(self, split, block_size, batch_size):
-        target = self.target
+        for name in self.dirs:
+            tar_fname = self.local_path / f'{name}.tar'
+            print(tar_fname)
+            tf = tarfile.open(tar_fname)
+            tf.extractall(path=self.local_path)
+            tf.close()
+            # print("Deleting", tar_fname)
+            # os.remove(tar_fname)
 
-        some_filenames = random.sample(self.filenames[split], batch_size)
-        x = np.zeros(shape=(batch_size, block_size), dtype=np.int64)
-        y = np.zeros(shape=(batch_size, block_size), dtype=np.int64)
+    def upload(self, hf_repo_id=None):
+        create_repo(repo_id=f'{self.hf_user}/{hf_repo_id}',
+                    token=self.hf_token,
+                    exist_ok=True)
 
-        # prepopulate with pad tokens
-        # so we don't have to pad later
-        x = x + PAD_TOKEN[target]
-        y = y + PAD_TOKEN[target]
+        if hf_repo_id is None:
+            hf_repo_id = self.repo_id
 
-        for i in range(batch_size):
-            f = some_filenames[i]
-            target_arr = np.load(self.files[target][f])
-            target_arr = target_arr[0:self.max_source_tokens]
-            target_arr = target_arr + OFFSET[target]
+        for name in self.dirs:
+            dir = self.dirs[name]
+            print('archiving {name}:{dir}')
+            tar_fname = self.local_path / f'{name}.tar'
+            arcname = dir.relative_to(self.local_path)
+            with tarfile.open(tar_fname, "w") as tar:
+                tar.add(dir, arcname=arcname)
 
-            _x = target_arr[:block_size]
-            _y = target_arr[1:block_size + 1]
-            x[i][:len(_x)] = _x
-            y[i][:len(_y)] = _y
+            upload_file(repo_id=f'{self.hf_user}/{hf_repo_id}',
+                        path_or_fileobj=tar_fname,
+                        path_in_repo=f'{name}.tar',
+                        token=self.hf_token)
 
-        return x, y
+    def create_sample(self, id):
+        sample = Sample()
+        sample.id = id
+        sample.audio_path = str(f'{AUDIO}/{id}.wav')
+        sample.semantic_tokens = str(f'{TOKENS}/{SEMANTIC}/{id}.npy')
+        sample.acoustic_tokens = str(f'{TOKENS}/{ACOUSTIC}/{id}.npy')
+        sample.text_tokens = str(f'{TOKENS}/{TEXT}/{id}.npy')
+        return sample
 
-    def load_batch_trans(self, split, block_size, batch_size):
-        source = self.source
-        target = self.target
+    def get_absolute_path(self, path: str):
+        return self.local_path / path
 
-        some_filenames = random.sample(self.filenames[split], batch_size)
-        x = np.zeros(shape=(batch_size, block_size), dtype=np.int64)
-        y = np.zeros(shape=(batch_size, block_size), dtype=np.int64)
+    def add_sample(self, sample: Sample):
+        sample = sample.to_json()
+        self.metadata_writer.write(sample + '\n')
+        self.metadata_writer.flush()
 
-        # prepopulate with pad tokens
-        # so we don't have to pad later
-        x = x + PAD_TOKEN[target]
-        y = y + PAD_TOKEN[target]
+    def iter_dataset(self):
+        # datasets are folders of .npy or .wav files. along with metadata in .jsonl or .csv format.
+        # following columns are required in the metadata : text, filename, speakerid. others are optional
+        metadata_path = self.metadata_path
+        with open(metadata_path) as metadata:
+            for line in metadata:
+                sample = Sample().from_json(line)
+                yield sample
 
-        for i in range(batch_size):
-            f = some_filenames[i]
-            source_arr = np.load(self.files[source][f]) + OFFSET[source]
-            source_arr = source_arr[0: self.max_source_tokens]
-            source_arr = np.append(source_arr, PAD_TOKEN[source])
 
-            target_arr = np.load(self.files[target][f])
-            target_arr = target_arr + OFFSET[target]
+def create_tar(dir, tar_path):
+    tar_cmd = [
+        'tar',
+        '-cf',
+        tar_path,
+        dir]
 
-            if target == ACOUSTIC:
-                target_arr = target_arr[:coarse_codebooks]  # pick only top codebooks
-                target_arr = self.codebook_encoding(target_arr, per_codebook_size)
 
-            target_arr = np.append(target_arr, PAD_TOKEN[target])
+if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser(description='prepares the data for consumption')
+    parser.add_argument('--dataset', type=str, required=True, help='Input directory for audio files.')
 
-            tokens = np.hstack([source_arr, target_arr])
-            _x = tokens[:block_size]
-            _y = tokens[1:block_size+1]
-            x[i][:len(_x)] = _x
-            y[i][:len(_y)] = _y
-
-        return x, y
-
-    def get_batch(self, split, device, block_size, batch_size):
-        x, y = self.load_batch(split, block_size=block_size, batch_size=batch_size)
-
-        x = torch.from_numpy(x)
-        y = torch.from_numpy(y)
-
-        if 'cuda' in device:
-            x, y = x.pin_memory().to(device, non_blocking=True), y.pin_memory().to(device, non_blocking=True)
-        else:
-            x, y = x.to(device), y.to(device)
-        
-        return x, y
+    args = parser.parse_args()
+    dataset = Dataset(repo_id=args.dataset)
+    dataset.download()
+    for elem in dataset.iter_dataset():
+        print(elem)
