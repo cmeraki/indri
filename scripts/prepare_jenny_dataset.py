@@ -15,31 +15,45 @@ def stream_samples(hf_repo_id):
     return iter(dataset)
 
 
-dataset = Dataset(repo_id='jenny')
+def make_dataset():
+    dataset = Dataset(repo_id='jenny')
 
-for item in tqdm(stream_samples('reach-vb/jenny_tts_dataset')):
-    sample = dataset.create_sample(id=item['file_name'].replace('/', '_'))
+    for item in tqdm(stream_samples('reach-vb/jenny_tts_dataset')):
+        sample = dataset.create_sample(id=item['file_name'].replace('/', '_'))
 
-    sample.raw_text = item['transcription_normalised']
-    sample.speaker_id = 'jenny'
+        sample.raw_text = item['transcription_normalised']
+        sample.speaker_id = 'jenny'
 
-    audio_array = item['audio']['array']
-    audio_array = torch.tensor(audio_array, dtype=torch.float32)
-    audio_array = audio_array.unsqueeze(dim=0)
+        audio_array = item['audio']['array']
+        audio_array = torch.tensor(audio_array, dtype=torch.float32)
+        audio_array = audio_array.unsqueeze(dim=0)
 
-    audio_array = convert_audio(audio_array,
-                                sr=48000,
-                                target_sr=16000,
-                                target_channels=1)
+        audio_array = convert_audio(audio_array,
+                                    sr=48000,
+                                    target_sr=16000,
+                                    target_channels=1)
+        
+        torchaudio.save(dataset.get_absolute_path(sample.audio_path),
+                        audio_array,
+                        sample_rate=16000,
+                        format='mp3',
+                        encoding='PCM_S',
+                        bits_per_sample=16,
+                        backend='ffmpeg',
+                        compression=CodecConfig(bit_rate=64000)
+                        )
 
-    torchaudio.save(dataset.get_absolute_path(sample.audio_path),
-                    audio_array,
-                    backend='ffmpeg',
-                    bits_per_sample=8,
-                    compression=CodecConfig(bit_rate=64),
-                    sample_rate=16000)
+        dataset.add_sample(sample)
 
-    dataset.add_sample(sample)
+    dataset.upload(hf_repo_id='jenny')
 
-dataset.upload(hf_repo_id='jenny')
+
+def test_dataset():
+    dataset = Dataset(repo_id='jenny')
+    for item in tqdm(dataset.iter_dataset()):
+        pass
+
+
+make_dataset()
+test_dataset()
 

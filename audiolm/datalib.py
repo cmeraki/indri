@@ -14,6 +14,7 @@ class Sample:
     id: str = None
     raw_text: str = None
     speaker_id: str = None
+    duration: float = None
 
     audio_path: str = None
     semantic_tokens: str = None
@@ -53,7 +54,7 @@ class Dataset:
             Path(dir).mkdir(exist_ok=True, parents=True)
 
         self.metadata_path = self.local_path / ANNOTATIONS / 'metadata.jsonl'
-        self.metadata_writer = open(self.metadata_path, 'a')
+        self.metadata_writer = None
 
         self.hf_token = os.getenv('HF_TOKEN_CMERAKI')
         self.hf_user = 'cmeraki'
@@ -89,6 +90,7 @@ class Dataset:
         for name in self.dirs:
             dir = self.dirs[name]
             print('archiving {name}:{dir}')
+
             tar_fname = self.local_path / f'{name}.tar'
             arcname = dir.relative_to(self.local_path)
             with tarfile.open(tar_fname, "w") as tar:
@@ -98,6 +100,10 @@ class Dataset:
                         path_or_fileobj=tar_fname,
                         path_in_repo=f'{name}.tar',
                         token=self.hf_token)
+
+            print("Deleting", tar_fname)
+            os.remove(tar_fname)
+
 
     def create_sample(self, id):
         sample = Sample()
@@ -112,18 +118,23 @@ class Dataset:
         return self.local_path / path
 
     def add_sample(self, sample: Sample):
+        if self.metadata_writer is None:
+            self.metadata_writer = open(self.metadata_path, 'a')
+
         sample = sample.to_json()
         self.metadata_writer.write(sample + '\n')
         self.metadata_writer.flush()
 
     def iter_dataset(self):
-        # datasets are folders of .npy or .wav files. along with metadata in .jsonl or .csv format.
-        # following columns are required in the metadata : text, filename, speakerid. others are optional
         metadata_path = self.metadata_path
         with open(metadata_path) as metadata:
             for line in metadata:
                 sample = Sample().from_json(line)
                 yield sample
+
+    def close(self):
+        if self.metadata_writer:
+            self.metadata_writer.close()
 
 
 def create_tar(dir, tar_path):
