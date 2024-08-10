@@ -58,6 +58,8 @@ class Dataset:
 
         self.hf_token = os.getenv('HF_TOKEN_CMERAKI')
         self.hf_user = 'cmeraki'
+        
+        self.ids = None
 
     def download(self, hf_repo_id=None):
         if hf_repo_id is None:
@@ -127,10 +129,21 @@ class Dataset:
 
     def iter_dataset(self):
         metadata_path = self.metadata_path
+        if not self.metadata_path.exists():
+            return 
+        
         with open(metadata_path) as metadata:
             for line in metadata:
                 sample = Sample().from_json(line)
                 yield sample
+
+    def has(self, id):
+        if self.ids is None:
+            self.ids = []
+            for sample in self.iter_dataset():
+                self.ids.append(sample.id)
+            
+        return id in self.ids
 
     def close(self):
         if self.metadata_writer:

@@ -57,7 +57,7 @@ class HubertTokenizer:
         # self.km.cluster_centers_ = self.km.cluster_centers_.astype(np.float64)
         print("HuBert ready to tokenize")
 
-    def encode(self, waveforms: list):
+    def encode(self, waveforms):
         """
         Create embeddings with Hubert model
         Classify embeddings into one of the pre-prepared 1000 clusters
@@ -193,7 +193,7 @@ def get_tokenizer(type, device):
         tokenizer = HubertTokenizer(device=device)
 
     if type == ACOUSTIC:
-        tokenizer = EncodecTokenizer(n_codebooks=8, device=device)
+        tokenizer = EncodecTokenizer(n_codebooks=2, device=device)
 
     if type == TEXT:
         tokenizer = TextTokenizer()

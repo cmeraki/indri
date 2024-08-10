@@ -2,13 +2,16 @@ import json
 import tarfile
 import io
 import torchaudio
+import torch
 
+import numpy as np
 from torio.io import CodecConfig
 from tqdm import tqdm
 from pathlib import Path
 
 from audiolm.utils import convert_audio
 from audiolm.datalib import Dataset
+from audiolm.tokenlib import get_tokenizer, ACOUSTIC, SEMANTIC
 
 
 def process_flac_files_in_tar(tar_path):
@@ -23,7 +26,7 @@ def process_flac_files_in_tar(tar_path):
 
 
 def stream_samples():
-    local_path = Path('/mnt/HD-PCTU3/indri_data/peoples_speech/train')
+    local_path = Path('/media/apurva/HD-PCTU3/indri_data/peoples_speech/train')
     meta = dict()
 
     with open(local_path / 'clean.json', "r", encoding="utf-8") as f:
@@ -43,34 +46,48 @@ def stream_samples():
 
     print("Total samples", len(meta))
 
-    for tarname in sorted((local_path/'clean').glob('*.tar')):
+    for tarname in sorted((local_path/'clean').glob('*.tar'))[::-1]:
         for (name, waveform, sample_rate) in process_flac_files_in_tar(tarname):
             item = {
                 "id": name,
                 "audio": waveform,
                 "sample_rate": sample_rate,
-                "text": meta[audio_filename]["text"],
-                "duration_ms": meta[audio_filename]["duration_ms"]
+                "text": meta[name]["text"],
+                "duration_ms": meta[name]["duration_ms"]
             }
 
             yield item
 
-
+@torch.inference_mode()
 def make_dataset():
+    tokenizers = {name: get_tokenizer(name, device='cuda:1') for name in [ACOUSTIC, SEMANTIC]}
+    
     dataset = Dataset(repo_id='peoples_speech')
     for item in tqdm(stream_samples()):
-        sample = dataset.create_sample(id=item['id'])
+        id = item['id']
+        if dataset.has(id):
+            # print(f"skipping id:{id}")
+            continue
+        
+        sample = dataset.create_sample(id=id)
         sample.raw_text = item['text']
         sample.speaker_id = ''
         sample_rate = item['sample_rate']
 
         audio_array = item['audio']
-
-        audio_array = convert_audio(audio_array,
-                                    sr=sample_rate,
-                                    target_sr=16000,
-                                    target_channels=1)
-
+        # tokens = {}
+        # for tokenizer_name in tokenizers:
+        #     tokenizer = tokenizers[tokenizer_name]
+        #     _array = convert_audio(audio_array,
+        #                                 sr=tokenizer.audio_sample_rate,
+        #                                 target_sr=16000,
+        #                                 target_channels=1)
+            
+        #     tokens[tokenizer_name] = tokenizer.encode(_array).astype(np.int16)
+        
+        # np.save(dataset.get_absolute_path(sample.semantic_tokens), tokens[SEMANTIC])
+        # np.save(dataset.get_absolute_path(sample.acoustic_tokens), tokens[ACOUSTIC])
+        
         torchaudio.save(dataset.get_absolute_path(sample.audio_path),
                         audio_array,
                         sample_rate=16000,
@@ -83,15 +100,40 @@ def make_dataset():
 
         dataset.add_sample(sample)
 
-    dataset.upload(hf_repo_id='peoples_speech')
+    
+    # dataset.upload(hf_repo_id='peoples_speech')
 
 
-def test_dataset():
+def tokenize():
+    import audiotoken
+    from audiolm.tokenlib import AUDIO
+    
     dataset = Dataset(repo_id='peoples_speech')
-    for item in tqdm(dataset.iter_dataset()):
-        pass
+    from glob import glob
+    path = str(dataset.dirs[AUDIO] / "*.wav")
+    print(path)
+    files = glob(path)
+    print("nfiles", len(files))
+    print("from", dataset.dirs[AUDIO], "to", dataset.dirs[SEMANTIC])
+
+    tokenizer = audiotoken.AudioToken(tokenizer='semantic_s', device='cuda:0')
+    tokenizer.encode_batch_files(audio_files=files,
+                                 outdir=dataset.dirs[SEMANTIC],
+                                 num_workers=4,
+                                 batch_size=32)
+    
+
+    tokenizer = audiotoken.AudioToken(tokenizer='acoustic', device='cuda:0')
+    tokenizer.encode_batch_files(audio_files=files,
+                                outdir=dataset.dirs[ACOUSTIC],
+                                num_workers=4,
+                                batch_size=32)
 
 
-make_dataset()
-test_dataset()
+# def test_dataset():
+#     dataset = Dataset(repo_id='peoples_speech')
+#     for item in tqdm(dataset.iter_dataset(), desc='iterating...'):
+#         pass
 
+# make_dataset()
+tokenize()

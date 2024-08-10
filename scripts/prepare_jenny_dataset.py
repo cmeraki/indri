@@ -5,6 +5,7 @@ from audiolm.utils import convert_audio
 from audiolm.datalib import Dataset
 from torio.io import CodecConfig
 from tqdm import tqdm
+from audiolm.tokenlib import AUDIO 
 
 
 def stream_samples(hf_repo_id):
@@ -48,12 +49,25 @@ def make_dataset():
     dataset.upload(hf_repo_id='jenny')
 
 
+def tokenize():
+    dataset = Dataset(repo_id='jenny')
+    
+    import audiotoken
+    tokenizer = audiotoken.AudioToken(tokenizer='semantic_s', device='cuda:0')
+    print(dataset.dirs[AUDIO])
+    tokenizer.encode_batch_files(audio_dir=dataset.dirs[AUDIO],
+                                 outdir='/tmp/test/',
+                                 num_workers=4,
+                                 batch_size=32)
+
+
 def test_dataset():
     dataset = Dataset(repo_id='jenny')
     for item in tqdm(dataset.iter_dataset()):
         pass
 
 
-make_dataset()
+# make_dataset()
+tokenize()
 test_dataset()
 
