@@ -7,7 +7,7 @@ from pathlib import Path
 from dataclasses import dataclass
 
 from gpt2_trainer import train as gpt_train
-from gpt2_model import GPT
+from gpt2_model import GPT, get_model
 from tokenlib import TEXT, SEMANTIC, ACOUSTIC, AUDIO
 
 DEVICE = 'cuda:0'
@@ -15,31 +15,46 @@ DEVICE = 'cuda:0'
 coarse_codebooks = 2
 per_codebook_size = 1024
 
-VOCAB_SIZES = {
-    TEXT: 50257,
-    SEMANTIC: 1000,
-    ACOUSTIC: 2048,
-}
+class cfg:
+    VOCAB_SIZES = {
+        TEXT: 50257,
+        SEMANTIC: 1000,
+        ACOUSTIC: 2048,
+    }
 
-OFFSET = {
-    TEXT: 0,
-    SEMANTIC: VOCAB_SIZES[TEXT],
-    ACOUSTIC: VOCAB_SIZES[SEMANTIC],
-}
+    OFFSET = {
+        TEXT: 0,
+        SEMANTIC: VOCAB_SIZES[TEXT],
+        ACOUSTIC: VOCAB_SIZES[TEXT] + VOCAB_SIZES[SEMANTIC],
+    }
+    
+    max_token_value = 0
+    for i in OFFSET:
+        max_token_value = max(OFFSET[i] + VOCAB_SIZES[i], max_token_value)
+        
 
-PAD_TOKEN = {
-    TEXT: 50256,
-    SEMANTIC: OFFSET[SEMANTIC] + VOCAB_SIZES[SEMANTIC],
-    ACOUSTIC: 3050,
-}
+    PAD_TOKEN = {
+        TEXT: 50256,
+        SEMANTIC: max_token_value + 2,
+        ACOUSTIC: max_token_value + 3,
+    }
+
+    PROMPT_TOKEN = {
+        TEXT: max_token_value + 4,
+        SEMANTIC: max_token_value + 5,
+        ACOUSTIC: max_token_value + 6,
+    }
+
+    VOCAB_SIZE = (max(PROMPT_TOKEN.values()) // 64 + 1)*64
 
 class DataLoader:
-    def __init__(self, data_dir, source, target, max_source_tokens=256):
+    def __init__(self, data_dir, source, target, max_source_tokens=256, prompt_length=0):
         self.data_dir = data_dir
         self.source = source
         self.target = target
         self.files, self.filenames = self.load_files()
         self.max_source_tokens = max_source_tokens
+        self.prompt_length = prompt_length
 
     def load_files(self):
         files = {}
@@ -75,37 +90,6 @@ class DataLoader:
         return flat_arr
 
     def load_batch(self, split, block_size, batch_size):
-        if self.source == self.target:
-            return self.load_batch_lm(split, block_size, batch_size)
-        else:
-            return self.load_batch_trans(split, block_size, batch_size)
-
-    def load_batch_lm(self, split, block_size, batch_size):
-        target = self.target
-
-        some_filenames = random.sample(self.filenames[split], batch_size)
-        x = np.zeros(shape=(batch_size, block_size), dtype=np.int64)
-        y = np.zeros(shape=(batch_size, block_size), dtype=np.int64)
-
-        # prepopulate with pad tokens
-        # so we don't have to pad later
-        x = x + PAD_TOKEN[target]
-        y = y + PAD_TOKEN[target]
-
-        for i in range(batch_size):
-            f = some_filenames[i]
-            target_arr = np.load(self.files[target][f])
-            target_arr = target_arr[0:self.max_source_tokens]
-            target_arr = target_arr + OFFSET[target]
-
-            _x = target_arr[:block_size]
-            _y = target_arr[1:block_size + 1]
-            x[i][:len(_x)] = _x
-            y[i][:len(_y)] = _y
-
-        return x, y
-
-    def load_batch_trans(self, split, block_size, batch_size):
         source = self.source
         target = self.target
 
@@ -115,25 +99,32 @@ class DataLoader:
 
         # prepopulate with pad tokens
         # so we don't have to pad later
-        x = x + PAD_TOKEN[target]
-        y = y + PAD_TOKEN[target]
+        x = x + cfg.PAD_TOKEN[target]
+        y = y + cfg.PAD_TOKEN[target]
 
         for i in range(batch_size):
             f = some_filenames[i]
-            source_arr = np.load(self.files[source][f]) + OFFSET[source]
+            source_arr = np.load(self.files[source][f]) + cfg.OFFSET[source]
             source_arr = source_arr[0: self.max_source_tokens]
-            source_arr = np.append(source_arr, PAD_TOKEN[source])
+            source_arr = np.append(source_arr, cfg.PAD_TOKEN[source])
 
             target_arr = np.load(self.files[target][f])
-            target_arr = target_arr + OFFSET[target]
+            target_arr = target_arr + cfg.OFFSET[target]
 
             if target == ACOUSTIC:
                 target_arr = target_arr[:coarse_codebooks]  # pick only top codebooks
                 target_arr = self.codebook_encoding(target_arr, per_codebook_size)
+            
+            prompt_arr = np.asarray([cfg.PROMPT_TOKEN[target]])
 
-            target_arr = np.append(target_arr, PAD_TOKEN[target])
+            if self.prompt_length > 0:
+                prompt_idx_start = np.random.randint(0, len(target_arr) - self.prompt_length + 1)
+                prompt_arr = target_arr[prompt_idx_start : prompt_idx_start + self.prompt_length]
+                prompt_arr = np.append(prompt_arr, cfg.PROMPT_TOKEN[target])
 
-            tokens = np.hstack([source_arr, target_arr])
+            target_arr = np.append(target_arr, cfg.PAD_TOKEN[target])
+            
+            tokens = np.hstack([source_arr, prompt_arr, target_arr])
             _x = tokens[:block_size]
             _y = tokens[1:block_size + 1]
             x[i][:len(_x)] = _x
@@ -154,77 +145,46 @@ class DataLoader:
 
         return x, y
 
-def get_vocab_size(source, target):
-    vocab_size = max(OFFSET[source] + VOCAB_SIZES[source],
-                    OFFSET[target] + VOCAB_SIZES[target],
-                    PAD_TOKEN[source], PAD_TOKEN[target]) + 1
+def get_vocab_size():
+    vocab_size = cfg.VOCAB_SIZE
 
     return vocab_size
 
-def load_model(expanded_vocab_size=None, weights_path=None):
-    model = GPT.from_pretrained('cmeraki/gpt2-124M-400B')
+def train_translator(source, target, data_dir, out_dir, prompt_length=0):
+    vocab_size = cfg.VOCAB_SIZE
+    print(f"{source}:{target} Vocab size", vocab_size)
 
-    if expanded_vocab_size:
-        model.expand_vocab(new_vocab_size=expanded_vocab_size)
+    model = get_model(vocab_size=vocab_size, device=DEVICE)
 
-    if weights_path:
-        saved_model = torch.load(weights_path)['model']
-        saved_model = {k.replace('_orig_mod.', ''): saved_model[k] for k in saved_model}
-
-        model.load_state_dict(saved_model)
-
-    model.to(DEVICE)
-
-    model = torch.compile(model)
-
-    return model
-
-def train_translator(source, target, data_dir, model, out_dir):
     print(f"Training {source} {target}".upper())
 
     data_generator = DataLoader(data_dir=data_dir,
                                 source=source,
-                                target=target)
+                                target=target,
+                                prompt_length=prompt_length)
+
+
+    out_dir = out_dir / f'{source}_{target}'
 
     gpt_train(model,
               get_batch=data_generator.get_batch,
               out_dir=out_dir,
-              steps=15000,
+              steps=1000,
               block_size=1024,
               eval_interval=500,
-              eval_steps=100,
-              batch_size=32,
+              eval_steps=10,
+              batch_size=40,
               grad_accum_steps=4,
               device=DEVICE)
 
     return out_dir
 
 def train():
+    data_dir = '/home/apurva/projects/indri/data/speechcolab/gigaspeech/'
     out_dir = Path('out_400b_ft_xs')
-    data_dir = iter_dataset()
+    # train_translator(TEXT, SEMANTIC, data_dir, out_dir, prompt_length=25)
+    train_translator(SEMANTIC, ACOUSTIC, data_dir, out_dir, prompt_length=64)
 
-    source, target = TEXT, SEMANTIC
-    vocab_size = get_vocab_size(source, target)
-    print(f"{source}:{target} Vocab size", vocab_size)
-
-    text_semantic_model = load_model(vocab_size)
-    text_semantic_model_path = train_translator(TEXT,
-                                                SEMANTIC,
-                                                model=text_semantic_model,
-                                                data_dir=data_dir,
-                                                out_dir=out_dir)
-
-    source, target = SEMANTIC, ACOUSTIC
-    vocab_size = get_vocab_size(source, target)
-    print(f"{source}:{target} Vocab size", vocab_size)
-
-    text_semantic_model = load_model(vocab_size)
-    text_semantic_model_path = train_translator(TEXT,
-                                                SEMANTIC,
-                                                model=text_semantic_model,
-                                                data_dir=data_dir,
-                                                out_dir=out_dir)
-
-
+    
 if __name__ == '__main__':
     train()

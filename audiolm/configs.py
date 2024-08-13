@@ -1,5 +1,0 @@
-data_dir = '../data'
-hf_token = ''
-hf_124m_base_model = 'cmeraki/'
-hf_ds_gigaspeech_tokens = ''
-hf_ds_gigaspeech_tokens = ''

@@ -295,9 +295,9 @@ class GPT(nn.Module):
         self.lm_head.weight = self.transformer.wte.weight
     
 
-def get_model(n_layer=4,
-              n_head=4,
-              n_embd=256,
+def get_model(n_layer=12,
+              n_head=12,
+              n_embd=768,
               vocab_size=3072,
               dropout=0.0,
               block_size=1024,

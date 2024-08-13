@@ -72,6 +72,8 @@ def train(model,
     tokens_per_iter = grad_accum_steps * batch_size * block_size
     print(f"tokens per iteration will be: {tokens_per_iter:,}")
 
+    print("NUM TOTAL TOKENS:", (tokens_per_iter * steps)/(10**9), "Billion")
+
     scaler = torch.cuda.amp.GradScaler(enabled=(dtype == 'float16'))
     optimizer = model.configure_optimizers(1e-1, get_lr(0), (0.9, 0.95), device_type)
 
