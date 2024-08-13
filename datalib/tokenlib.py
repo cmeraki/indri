@@ -14,18 +14,12 @@ from pathlib import Path
 from tqdm import tqdm
 from PIL import Image
 from encodec.utils import convert_audio
+from common import *
 
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 torch.amp.autocast(device_type='cuda', dtype=torch.bfloat16)
 
-SEMANTIC = 'semantic'
-ACOUSTIC = 'acoustic'
-TEXT = 'text'
-AUDIO = 'audio'
-IMAGE = 'image'
-ANNOTATIONS = 'annotation'
-TOKENS = 'tokens'
 
 class HubertTokenizer:
     def __init__(self, device='cpu'):

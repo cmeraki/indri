@@ -1,0 +1,7 @@
+SEMANTIC = 'semantic'
+ACOUSTIC = 'acoustic'
+TEXT = 'text'
+AUDIO = 'audio'
+IMAGE = 'image'
+ANNOTATIONS = 'annotation'
+TOKENS = 'tokens'

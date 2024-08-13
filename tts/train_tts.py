@@ -7,8 +7,8 @@ from pathlib import Path
 from dataclasses import dataclass
 
 from gpt2_trainer import train as gpt_train
-from gpt2_model import GPT, get_model
-from tokenlib import TEXT, SEMANTIC, ACOUSTIC, AUDIO
+from gpt2_model import get_model
+from common import TEXT, SEMANTIC, ACOUSTIC
 
 DEVICE = 'cuda:0'
 
@@ -180,8 +180,8 @@ def train_translator(source, target, data_dir, out_dir, prompt_length=0):
     return out_dir
 
 def train():
-    data_dir = '/home/apurva/projects/indri/data/speechcolab/gigaspeech/'
-    out_dir = Path('out_400b_ft_xs')
+    data_dir = '../data/speechcolab/gigaspeech/'
+    out_dir = Path('../data/models/out_400b_ft_xs')
     train_translator(TEXT, SEMANTIC, data_dir, out_dir, prompt_length=25)
     train_translator(SEMANTIC, ACOUSTIC, data_dir, out_dir, prompt_length=64)
 
