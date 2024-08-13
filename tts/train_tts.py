@@ -171,7 +171,7 @@ def train_translator(source, target, data_dir, out_dir, prompt_length=0):
               out_dir=out_dir,
               steps=1000,
               block_size=1024,
-              eval_interval=500,
+              eval_interval=100,
               eval_steps=10,
               batch_size=40,
               grad_accum_steps=4,
@@ -182,9 +182,9 @@ def train_translator(source, target, data_dir, out_dir, prompt_length=0):
 def train():
     data_dir = '/home/apurva/projects/indri/data/speechcolab/gigaspeech/'
     out_dir = Path('out_400b_ft_xs')
-    # train_translator(TEXT, SEMANTIC, data_dir, out_dir, prompt_length=25)
+    train_translator(TEXT, SEMANTIC, data_dir, out_dir, prompt_length=25)
     train_translator(SEMANTIC, ACOUSTIC, data_dir, out_dir, prompt_length=64)
 
-    
+
 if __name__ == '__main__':
     train()
