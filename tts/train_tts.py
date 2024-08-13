@@ -71,6 +71,8 @@ class DataLoader:
 
         filenames = list(filenames)
 
+        print("Num files", len(filenames))
+
         filenames = {
             'train': filenames[1000:],
             'val': filenames[:1000]
@@ -88,6 +90,32 @@ class DataLoader:
         arr += i_values.reshape(c, 1)
         flat_arr = arr.reshape(c * n, order='F')
         return flat_arr
+    
+
+    @staticmethod
+    def prepare_source(source_arr, source, max_source_tokens):
+        source_arr = source_arr + cfg.OFFSET[source]
+        source_arr = source_arr[0: max_source_tokens]
+        source_arr = np.append(source_arr, cfg.PAD_TOKEN[source])
+        return source_arr
+    
+    @staticmethod
+    def prepare_target(target_arr, target=ACOUSTIC, prompt_length=0):
+        target_arr = target_arr + cfg.OFFSET[target]
+
+        if target == ACOUSTIC:
+            target_arr = target_arr[:coarse_codebooks]
+            target_arr = DataLoader.codebook_encoding(target_arr, per_codebook_size)
+        
+        prompt_arr = np.asarray([cfg.PROMPT_TOKEN[target]])
+
+        if prompt_length > 0:
+            prompt_idx_start = np.random.randint(0, max(len(target_arr) - prompt_length + 1, 1))
+            prompt_arr = target_arr[prompt_idx_start : prompt_idx_start + prompt_length]
+            prompt_arr = np.append(prompt_arr, cfg.PROMPT_TOKEN[target])
+
+        target_arr = np.append(target_arr, cfg.PAD_TOKEN[target])
+        return prompt_arr, target_arr
 
     def load_batch(self, split, block_size, batch_size):
         source = self.source
@@ -104,27 +132,14 @@ class DataLoader:
 
         for i in range(batch_size):
             f = some_filenames[i]
-            source_arr = np.load(self.files[source][f]) + cfg.OFFSET[source]
-            source_arr = source_arr[0: self.max_source_tokens]
-            source_arr = np.append(source_arr, cfg.PAD_TOKEN[source])
-
+            source_arr = np.load(self.files[source][f])
             target_arr = np.load(self.files[target][f])
-            target_arr = target_arr + cfg.OFFSET[target]
 
-            if target == ACOUSTIC:
-                target_arr = target_arr[:coarse_codebooks]  # pick only top codebooks
-                target_arr = self.codebook_encoding(target_arr, per_codebook_size)
-            
-            prompt_arr = np.asarray([cfg.PROMPT_TOKEN[target]])
+            source_arr = self.prepare_source(source_arr, source=self.source, max_source_tokens=self.max_source_tokens)
+            prompt_arr, target_arr = self.prepare_target(target_arr, target=self.target, prompt_length=self.prompt_length)
 
-            if self.prompt_length > 0:
-                prompt_idx_start = np.random.randint(0, len(target_arr) - self.prompt_length + 1)
-                prompt_arr = target_arr[prompt_idx_start : prompt_idx_start + self.prompt_length]
-                prompt_arr = np.append(prompt_arr, cfg.PROMPT_TOKEN[target])
-
-            target_arr = np.append(target_arr, cfg.PAD_TOKEN[target])
-            
             tokens = np.hstack([source_arr, prompt_arr, target_arr])
+
             _x = tokens[:block_size]
             _y = tokens[1:block_size + 1]
             x[i][:len(_x)] = _x
@@ -150,11 +165,15 @@ def get_vocab_size():
 
     return vocab_size
 
-def train_translator(source, target, data_dir, out_dir, prompt_length=0):
+def train_translator(source, target, data_dir, out_dir, pretrained=None, prompt_length=0):
     vocab_size = cfg.VOCAB_SIZE
     print(f"{source}:{target} Vocab size", vocab_size)
 
-    model = get_model(vocab_size=vocab_size, device=DEVICE)
+
+    out_dir = out_dir / f'{source}_{target}'
+    print(out_dir)
+
+    model = get_model(vocab_size=vocab_size, device=DEVICE, path=pretrained)
 
     print(f"Training {source} {target}".upper())
 
@@ -164,12 +183,10 @@ def train_translator(source, target, data_dir, out_dir, prompt_length=0):
                                 prompt_length=prompt_length)
 
 
-    out_dir = out_dir / f'{source}_{target}'
-    print(out_dir)
     gpt_train(model,
               get_batch=data_generator.get_batch,
               out_dir=out_dir,
-              steps=60000,
+              steps=6000,
               block_size=1024,
               eval_interval=100,
               eval_steps=10,
@@ -180,10 +197,10 @@ def train_translator(source, target, data_dir, out_dir, prompt_length=0):
     return out_dir
 
 def train():
-    data_dir = 'data/speechcolab/gigaspeech/'
-    out_dir = Path('data/models/out_400b_ft_xs')
-    train_translator(TEXT, SEMANTIC, data_dir, out_dir, prompt_length=25)
-    train_translator(SEMANTIC, ACOUSTIC, data_dir, out_dir, prompt_length=64)
+    data_dir = '/home/apurva/.cache/huggingface/hub/datasets--cmeraki--gsxl_tokens/snapshots/15630e7e6d09e2db7c12a8d449ec9c0d8877cd62'
+    out_dir = Path('data/models/out_400b_ft_xl')
+    train_translator(TEXT, SEMANTIC, data_dir, out_dir, prompt_length=25, pretrained='data/models/out_400b_ft_xs/text_semantic/gpt_last.pt')
+    train_translator(SEMANTIC, ACOUSTIC, data_dir, out_dir, prompt_length=64, pretrained='data/models/out_400b_ft_xs/semantic_acoustic/gpt_last.pt')
 
 
 if __name__ == '__main__':

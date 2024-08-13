@@ -317,10 +317,13 @@ def get_model(n_layer=12,
     gptconf = GPTConfig(**model_args)
     model = GPT(gptconf)
     if path:
-        saved_model = torch.load(path)['model']
-        model.load_state_dict(saved_model)
-        return model
-
+        state_dict = torch.load(path)['model']
+        unwanted_prefix = '_orig_mod.'
+        for k,v in list(state_dict.items()):
+            if k.startswith(unwanted_prefix):
+                state_dict[k[len(unwanted_prefix):]] = state_dict.pop(k)
+        model.load_state_dict(state_dict)
+    
     print(gptconf)
 
     model.to(device)
