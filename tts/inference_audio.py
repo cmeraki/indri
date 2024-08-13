@@ -14,7 +14,7 @@ from encodec.utils import save_audio
 from tts.gpt2_model import get_model
 
 from datalib.tokenlib import get_tokenizer
-from tts.train_tts import cfg
+from tts.train_tts import cfg, DataLoader
 from common import SEMANTIC, TEXT, ACOUSTIC
 
 seed = 1337
@@ -61,12 +61,27 @@ class GPTModel:
         return y
 
 
+def prepare_input(source_tokens, target_prompt, prompt_length):
+    source_tokens = DataLoader.prepare_source(source_tokens,
+                                            source=TEXT,
+                                            max_source_tokens=256)
+    
+    prompt_arr, _ = DataLoader.prepare_target(target_prompt,
+                                            target=SEMANTIC,
+                                            prompt_length=prompt_length)
+    
+    source_tokens = np.hstack([source_tokens, prompt_arr])
+    source_tokens = (torch.tensor(source_tokens,
+                                dtype=torch.long,
+                                device=device)[None, ...])
+    
+    return source_tokens
+
+
 def run_tts():
     semantic_prompt = np.load('data/speechcolab/gigaspeech/semantic/AUD0000000007_S0000008.npy')
     acoustic_prompt = np.load('data/speechcolab/gigaspeech/acoustic/AUD0000000007_S0000008.npy')
     
-    from tts.train_tts import DataLoader
-
     text_semantic_model = GPTModel(path='data/models/out_400b_ft_xs/text_semantic/',
                                    source=TEXT,
                                    target=SEMANTIC,
@@ -78,29 +93,14 @@ def run_tts():
                                        device=device)
 
     text = "THIS WAS THE BEST OF TIMES <PERIOD>"
-    text_tokenizer = get_tokenizer(TEXT, device='cpu')
-    
-    text_tokens = np.asarray(text_tokenizer.encode(text))
-    text_tokens = DataLoader.prepare_source(text_tokens, source=TEXT, max_source_tokens=256)
-    prompt_arr, _ = DataLoader.prepare_target(semantic_prompt, target=SEMANTIC, prompt_length=25)
-    
-    text_tokens = np.hstack([text_tokens, prompt_arr])
-    text_tokens = (torch.tensor(text_tokens, dtype=torch.long, device=device)[None, ...])
-    
+    text_tokens = np.asarray(get_tokenizer(TEXT, device='cpu').encode(text))
+
+    input_tokens = prepare_input(text_tokens, semantic_prompt, prompt_length=25)
     semantic_tokens = text_semantic_model.generate(text_tokens) - cfg.OFFSET[SEMANTIC]
-    
-    # print(semantic_prompt, acoustic_prompt)
 
-    semantic_tokens = DataLoader.prepare_source(semantic_tokens, source=SEMANTIC, max_source_tokens=256)
-    prompt_arr, _ = DataLoader.prepare_target(acoustic_prompt, target=ACOUSTIC, prompt_length=64)
-    print(semantic_tokens, prompt_arr)
-    semantic_tokens = np.hstack([semantic_tokens, prompt_arr])
+    input_tokens = prepare_input(semantic_tokens, acoustic_prompt, prompt_length=64)
+    acoustic_tokens = semantic_acoustic_model.generate(input_tokens) - cfg.OFFSET[ACOUSTIC]
     
-    semantic_tokens = (torch.tensor(semantic_tokens, dtype=torch.long, device=device)[None, ...])
-    
-
-    acoustic_tokens = semantic_acoustic_model.generate(semantic_tokens) - cfg.OFFSET[ACOUSTIC]
-    # print(acoustic_tokens.shape, acoustic_tokens)
     acoustic_tokenizer = get_tokenizer(ACOUSTIC, device='cpu')
     wav = acoustic_tokenizer.decode(torch.tensor(acoustic_tokens))
     save_audio(wav[0], f'tts.wav', sample_rate=24000)
