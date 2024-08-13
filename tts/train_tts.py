@@ -6,8 +6,8 @@ import numpy as np
 from pathlib import Path
 from dataclasses import dataclass
 
-from gpt2_trainer import train as gpt_train
-from gpt2_model import get_model
+from tts.gpt2_trainer import train as gpt_train
+from tts.gpt2_model import get_model
 from common import TEXT, SEMANTIC, ACOUSTIC
 
 DEVICE = 'cuda:0'
@@ -165,11 +165,11 @@ def train_translator(source, target, data_dir, out_dir, prompt_length=0):
 
 
     out_dir = out_dir / f'{source}_{target}'
-
+    print(out_dir)
     gpt_train(model,
               get_batch=data_generator.get_batch,
               out_dir=out_dir,
-              steps=1000,
+              steps=60000,
               block_size=1024,
               eval_interval=100,
               eval_steps=10,
@@ -180,8 +180,8 @@ def train_translator(source, target, data_dir, out_dir, prompt_length=0):
     return out_dir
 
 def train():
-    data_dir = '../data/speechcolab/gigaspeech/'
-    out_dir = Path('../data/models/out_400b_ft_xs')
+    data_dir = 'data/speechcolab/gigaspeech/'
+    out_dir = Path('data/models/out_400b_ft_xs')
     train_translator(TEXT, SEMANTIC, data_dir, out_dir, prompt_length=25)
     train_translator(SEMANTIC, ACOUSTIC, data_dir, out_dir, prompt_length=64)
 

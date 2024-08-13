@@ -79,7 +79,7 @@ class HubertTokenizer:
 class TextTokenizer:
     def __init__(self, device='cpu', name='cmeraki/gpt2-124M-400B'):
         self.type = TEXT
-        self.tokenizer = AutoTokenizer.from_pretrained(name)
+        self.tokenizer = AutoTokenizer.from_pretrained('TheBloke/Llama-2-7B-Chat-GPTQ')
         print("text vocab size", self.tokenizer.vocab_size)
         
     def encode(self, text: str):

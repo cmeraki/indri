@@ -6,12 +6,16 @@ os.environ["SUNO_OFFLOAD_CPU"] = "True"
 import numpy as np
 import bark
 import torch
-from encodec.utils import save_audio
-from gpt2_model import get_model
-import configs
-
 from contextlib import nullcontext
-from tokenlib import get_tokenizer
+from pathlib import Path
+
+from encodec.utils import save_audio
+
+from tts.gpt2_model import get_model
+
+from datalib.tokenlib import get_tokenizer
+from tts.train_tts import cfg
+from common import SEMANTIC, TEXT, ACOUSTIC
 
 seed = 1337
 torch.manual_seed(seed)
@@ -27,28 +31,19 @@ ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=
 
 
 class GPTModel:
-    def __init__(self, path, device='cuda:0'):
-        self.config = json.load(open(path / 'config.json'))
+    def __init__(self, path, source, target, device='cuda:0'):
         self.device = device
 
-        self.path = path/'gpt_last.pt'
+        self.path = Path(path)/'gpt_100.pt'
+        self.vocab_size = cfg.VOCAB_SIZE
         self.model = self.load(self.path)
-        self.vocab_size = self.config[tokenizer_config.EXPANDED_VOCAB_SIZE]
 
-        self.source = self.config['source']
-        self.target = self.config['target']
+        self.source = source
+        self.target = target
 
     def load(self, path):
         saved_model = torch.load(path)['model']
-
-        model = get_model(n_layer=12,
-                        n_head=12,
-                        n_embd=768,
-                        vocab_size=self.vocab_size,
-                        block_size=1024,
-                        compile=True,
-                        device=self.device)
-        
+        model = get_model(vocab_size=self.vocab_size, device=self.device)
         model.load_state_dict(saved_model)
         model.eval()
         return model
@@ -58,8 +53,8 @@ class GPTModel:
             with ctx:
                 y = self.model.generate(tokens, max_new_tokens, temperature=temperature, top_k=top_k)
                 y = y.detach().cpu().numpy()[0]
-                start_idx = np.where(y == self.config[tokenizer_config.PAD_TOKEN][self.source])[0][0]
-                end_idx = np.where(y == self.config[tokenizer_config.PAD_TOKEN][self.target])[0][0]
+                start_idx = np.where(y == cfg.PAD_TOKEN[self.source])[0][0]
+                end_idx = np.where(y == cfg.PAD_TOKEN[self.target])[0][0]
                 y = y[start_idx + 1: end_idx]
         
         return y
@@ -67,21 +62,25 @@ class GPTModel:
 
 def run_tts():
 
-    text_semantic_model = GPTModel(path='out/text_semantic/',
+    text_semantic_model = GPTModel(path='data/models/out_400b_ft_xs/text_semantic/',
+                                   source=TEXT,
+                                   target=SEMANTIC,
                                    device=device)
 
-    semantic_acoustic_model = GPTModel(path='out/semantic_acoustic/',
+    semantic_acoustic_model = GPTModel(path='data/models/out_400b_ft_xs/semantic_acoustic/',
+                                       source=SEMANTIC,
+                                       target=ACOUSTIC,
                                        device=device)
 
-    text = "this was the greatest thing to happen since the big bang"
-    text_tokenizer = get_tokenizer(tokenizer_config.TEXT, device='cpu')
-    text_tokens = np.asarray(text_tokenizer.encode(text)) + tokenizer_config.OFFSET[tokenizer_config.TEXT]
+    text = "THIS WAS THE BEST OF TIMES <PERIOD>"
+    text_tokenizer = get_tokenizer(TEXT, device='cpu')
+    text_tokens = np.asarray(text_tokenizer.encode(text)) + cfg.OFFSET[TEXT]
     
-    text_tokens = np.append(text_tokens, tokenizer_config.PAD_TOKEN[tokenizer_config.TEXT])
+    text_tokens = np.append(text_tokens, cfg.PAD_TOKEN[TEXT])
     text_tokens = (torch.tensor(text_tokens, dtype=torch.long, device=device)[None, ...])
     semantic_tokens = text_semantic_model.generate(text_tokens)
     
-    semantic_tokens = np.append(semantic_tokens, PAD_TOKEN[SEMANTIC])
+    semantic_tokens = np.append(semantic_tokens, cfg.PAD_TOKEN[SEMANTIC])
     semantic_tokens = (torch.tensor(semantic_tokens, dtype=torch.long, device=device)[None, ...])
     acoustic_tokens = semantic_acoustic_model.generate(semantic_tokens)
     

@@ -9,9 +9,9 @@ from torio.io import CodecConfig
 from tqdm import tqdm
 from pathlib import Path
 
-from audiolm.utils import convert_audio
-from audiolm.datalib import Dataset
-from audiolm.tokenlib import get_tokenizer, ACOUSTIC, SEMANTIC
+from tts.utils import convert_audio
+from datalib import Dataset
+from tokenlib import get_tokenizer, ACOUSTIC, SEMANTIC
 
 
 def process_flac_files_in_tar(tar_path):
