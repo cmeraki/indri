@@ -46,7 +46,7 @@ class GPTModel:
         model.eval()
         return model
 
-    def generate(self, tokens, max_new_tokens=1024, temperature=0.8, top_k=100):
+    def generate(self, tokens, max_new_tokens=1024, temperature=0.5, top_k=100):
         with torch.no_grad():
             with ctx:
                 y = self.model.generate(tokens, max_new_tokens, temperature=temperature, top_k=top_k)
@@ -61,13 +61,13 @@ class GPTModel:
         return y
 
 
-def prepare_input(source_tokens, target_prompt, prompt_length):
+def prepare_input(source_tokens, target_prompt, source, target, prompt_length):
     source_tokens = DataLoader.prepare_source(source_tokens,
-                                            source=TEXT,
+                                            source=source,
                                             max_source_tokens=256)
     
     prompt_arr, _ = DataLoader.prepare_target(target_prompt,
-                                            target=SEMANTIC,
+                                            target=target,
                                             prompt_length=prompt_length)
     
     source_tokens = np.hstack([source_tokens, prompt_arr])
@@ -79,31 +79,35 @@ def prepare_input(source_tokens, target_prompt, prompt_length):
 
 
 def run_tts():
-    semantic_prompt = np.load('data/speechcolab/gigaspeech/semantic/AUD0000000007_S0000008.npy')
-    acoustic_prompt = np.load('data/speechcolab/gigaspeech/acoustic/AUD0000000007_S0000008.npy')
+    semantic_prompt = np.load('/home/apurva/.cache/huggingface/hub/datasets--cmeraki--gsxl_tokens/snapshots/15630e7e6d09e2db7c12a8d449ec9c0d8877cd62/semantic/AUD0000000007_S0000008.npy')
+    acoustic_prompt = np.load('/home/apurva/.cache/huggingface/hub/datasets--cmeraki--gsxl_tokens/snapshots/15630e7e6d09e2db7c12a8d449ec9c0d8877cd62/acoustic/AUD0000000007_S0000008.npy')
     
-    text_semantic_model = GPTModel(path='data/models/out_400b_ft_xs/text_semantic/',
+    text_semantic_model = GPTModel(path='data/models/out_400b_ft_xl/text_semantic/',
                                    source=TEXT,
                                    target=SEMANTIC,
                                    device=device)
 
-    semantic_acoustic_model = GPTModel(path='data/models/out_400b_ft_xs/semantic_acoustic/',
+    semantic_acoustic_model = GPTModel(path='data/models/out_400b_ft_xl/semantic_acoustic/',
                                        source=SEMANTIC,
                                        target=ACOUSTIC,
                                        device=device)
 
-    text = "THIS WAS THE BEST OF TIMES <PERIOD>"
+    text = "MERCUTIO <COMMA> KINSMAN TO THE PRINCE AND FRIEND TO ROMEO <PERIOD>"
     text_tokens = np.asarray(get_tokenizer(TEXT, device='cpu').encode(text))
+    print(text_tokens)
 
-    input_tokens = prepare_input(text_tokens, semantic_prompt, prompt_length=25)
-    semantic_tokens = text_semantic_model.generate(text_tokens) - cfg.OFFSET[SEMANTIC]
+    for i in range(100):
+        input_tokens = prepare_input(text_tokens, semantic_prompt, source=TEXT, target=SEMANTIC, prompt_length=25)
+        semantic_tokens = text_semantic_model.generate(input_tokens) - cfg.OFFSET[SEMANTIC]
 
-    input_tokens = prepare_input(semantic_tokens, acoustic_prompt, prompt_length=64)
-    acoustic_tokens = semantic_acoustic_model.generate(input_tokens) - cfg.OFFSET[ACOUSTIC]
-    
-    acoustic_tokenizer = get_tokenizer(ACOUSTIC, device='cpu')
-    wav = acoustic_tokenizer.decode(torch.tensor(acoustic_tokens))
-    save_audio(wav[0], f'tts.wav', sample_rate=24000)
+        print(list(semantic_tokens))
+        input_tokens = prepare_input(semantic_tokens, acoustic_prompt, source=SEMANTIC, target=ACOUSTIC, prompt_length=64)
+        print(list(input_tokens))
+        acoustic_tokens = semantic_acoustic_model.generate(input_tokens) - cfg.OFFSET[ACOUSTIC]
+        
+        acoustic_tokenizer = get_tokenizer(ACOUSTIC, device='cpu')
+        wav = acoustic_tokenizer.decode(torch.tensor(acoustic_tokens))
+        save_audio(wav[0], f'tts_{i}.wav', sample_rate=24000)
 
 
 if __name__ == "__main__":
