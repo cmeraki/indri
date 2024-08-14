@@ -156,31 +156,6 @@ class EncodecTokenizer:
         return wav
 
 
-class ChameleonImageTokenizer:
-    def __init__(self, device):
-        self.type = IMAGE
-        self.device = device
-        self.token = os.getenv('HF_TOKEN')
-
-        cfg_path = hf_hub_download(repo_id='cmeraki/chameleon_tokenizer',
-                                    filename='vqgan.yaml', token=self.token)
-
-        ckpt_path = hf_hub_download(repo_id='cmeraki/chameleon_tokenizer',
-                                      filename='vqgan.ckpt', token=self.token)
-
-        self.tokenizer = ImageTokenizer(device=self.device,
-                                        cfg_path=cfg_path,
-                                        ckpt_path=ckpt_path)
-
-    def encode(self, pil_image):
-        tokens = self.tokenizer.img_tokens_from_pil(pil_image)
-        tokens = tokens.detach().cpu().numpy().astype(np.uint16)
-        return tokens
-
-    def decode(self, tokens):
-        return self.tokenizer.pil_from_img_toks(tokens)
-
-
 def get_tokenizer(type, device):
     tokenizer = None
     if type == SEMANTIC:
@@ -191,9 +166,7 @@ def get_tokenizer(type, device):
 
     if type == TEXT:
         tokenizer = TextTokenizer()
-
-    if type == IMAGE:
-        tokenizer = ChameleonImageTokenizer(device=device)
+    
 
     return tokenizer
 
