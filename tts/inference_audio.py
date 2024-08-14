@@ -20,7 +20,7 @@ class GPTModel:
     def __init__(self, path, source, target, device='cuda:0'):
         self.device = device
 
-        self.path = Path(path)/'gpt_200.pt'
+        self.path = Path(path)/'gpt_last.pt'
         self.vocab_size = cfg.VOCAB_SIZE
         self.model = self.load(self.path)
 
@@ -32,32 +32,27 @@ class GPTModel:
         model.eval()
         return model
 
-    def generate(self, tokens, max_new_tokens=1024, temperature=0.3, top_k=100):
+    def generate(self, tokens, max_new_tokens=1024, temperature=0.3, top_k=100, stop_token=None):
         with torch.no_grad():
             with ctx:
-                y = self.model.generate(tokens, max_new_tokens, temperature=temperature, top_k=top_k)
-                y = y.detach().cpu().numpy()[0]
-
-                start_idx = np.where(y == cfg.PROMPT_TOKEN[self.target])[0]
-                end_idx = np.where(y == cfg.PAD_TOKEN[self.target])[0]
+                y = self.model.generate(tokens, 
+                                        max_new_tokens, 
+                                        temperature=temperature,
+                                        top_k=top_k, 
+                                        stop_token=stop_token)
                 
-                if end_idx.any():
-                    y = y[start_idx[-1] + 1: end_idx[0]]
-                else:
-                    y = y[start_idx[-1] + 1:]
+                y = y.detach().cpu().numpy()[0]
         return y
 
 
 def prepare_input(source_tokens, target_prompt, source, target, prompt_length):
     source_tokens = DataLoader.prepare_source(source_tokens,
                                             source=source,
-                                            max_source_tokens=256)
+                                            max_source_tokens=cfg.max_source_tokens)
     
     prompt_arr = DataLoader.prepare_prompt(prompt=None,
                                             target=target,
                                             prompt_length=prompt_length)
-    
-
     
     source_tokens = np.hstack([source_tokens, prompt_arr])
     source_tokens = (torch.tensor(source_tokens,
@@ -81,7 +76,7 @@ def run_tts():
                                        target=ACOUSTIC,
                                        device=device)
 
-    text = "it was the best of times <comma> it was the worst of times <period>"
+    text = "MERCUTIO <COMMA> KINSMAN TO THE PRINCE AND FRIEND TO ROMEO <PERIOD>".lower()
     text_tokenizer = get_tokenizer(TEXT, device='cpu')
     text_tokens = np.asarray(text_tokenizer.encode(text))
     print(text_tokens)
@@ -91,21 +86,27 @@ def run_tts():
                                      semantic_prompt,
                                      source=TEXT, 
                                      target=SEMANTIC,
-                                     prompt_length=25)
+                                     prompt_length=cfg.PROMPT_LENGTH[SEMANTIC])
         
         print("input", input_tokens)
         
-        semantic_tokens = text_semantic_model.generate(input_tokens) - cfg.OFFSET[SEMANTIC]
-
+        semantic_tokens = text_semantic_model.generate(input_tokens, stop_token=cfg.PAD_TOKEN[SEMANTIC])
+        input_length = cfg.max_source_tokens + cfg.PROMPT_LENGTH[SEMANTIC]
+        semantic_tokens = semantic_tokens[input_length:] - cfg.OFFSET[SEMANTIC]
+        
+        print("p", list(semantic_tokens))
+        
         input_tokens = prepare_input(semantic_tokens,
                                      acoustic_prompt,
                                      source=SEMANTIC,
-                                     target=ACOUSTIC, 
-                                     prompt_length=64)
+                                     target=ACOUSTIC,
+                                     prompt_length=cfg.PROMPT_LENGTH[ACOUSTIC])
         
-        print("semantic", semantic_tokens)
-        acoustic_tokens = semantic_acoustic_model.generate(input_tokens) - cfg.OFFSET[ACOUSTIC]
-        
+        print("semantic", input_tokens.shape)
+        acoustic_tokens = semantic_acoustic_model.generate(input_tokens, stop_token=cfg.PAD_TOKEN[ACOUSTIC])
+        input_length = cfg.max_source_tokens + cfg.PROMPT_LENGTH[ACOUSTIC]
+        acoustic_tokens = acoustic_tokens[input_length:] - cfg.OFFSET[ACOUSTIC]
+
         print("acoustic", acoustic_tokens)
 
         acoustic_tokenizer = get_tokenizer(ACOUSTIC, device='cpu')

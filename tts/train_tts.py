@@ -46,6 +46,13 @@ class cfg:
     }
 
     VOCAB_SIZE = (max(PROMPT_TOKEN.values()) // 64 + 1)*64
+    
+    max_source_tokens = 256
+    
+    PROMPT_LENGTH = {
+        SEMANTIC : 32,
+        ACOUSTIC : 64
+    }
 
 print(cfg.__dict__)
 
@@ -64,7 +71,6 @@ class DataLoader:
         filenames = None
 
         for type in [self.source, self.target]:
-            # create a dictionary of name: filepath mapping
             files[type] = {Path(f).name: Path(f) for f in glob.glob(f"{self.data_dir}/{type}/*.npy")}
 
             if not filenames:
@@ -163,7 +169,7 @@ class DataLoader:
             prompt_arr = self.prepare_prompt(target_arr if self.prompting else None,
                                              target=self.target, 
                                              prompt_length=self.prompt_length)
-
+            
             tokens = np.hstack([source_arr, prompt_arr, target_arr])
 
             _x = tokens[:block_size]
@@ -226,8 +232,8 @@ def train_translator(source, target, data_dir, out_dir, pretrained=None, prompt_
 def train():
     data_dir = '/home/apurva/.cache/huggingface/hub/datasets--cmeraki--gsxl_tokens/snapshots/15630e7e6d09e2db7c12a8d449ec9c0d8877cd62'
     out_dir = Path('data/models/out_400b_ft_xl')
-    train_translator(TEXT, SEMANTIC, data_dir, out_dir, prompt_length=32)
-    train_translator(SEMANTIC, ACOUSTIC, data_dir, out_dir, prompt_length=64)
+    train_translator(TEXT, SEMANTIC, data_dir, out_dir, prompt_length=cfg.PROMPT_LENGTH[SEMANTIC])
+    train_translator(SEMANTIC, ACOUSTIC, data_dir, out_dir, prompt_length=cfg.PROMPT_LENGTH[ACOUSTIC])
 
 
 if __name__ == '__main__':
