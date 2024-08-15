@@ -9,7 +9,7 @@ pip install -r requirements.txt
 
 for preparing tokens refer to https://github.com/cmeraki/audiotoken/
 
-# Training 
+### Training 
 ```
 python -m tts.train
 ```
@@ -19,7 +19,7 @@ python -m tts.train
 2. Train a model using downloaded tokens.  
 
 
-# Inference
+### Inference
 Downloads pretrained models and runs inference on them.
 size can be one of 30m or 125m
 
