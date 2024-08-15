@@ -32,7 +32,7 @@ class GPTModel:
         model.eval()
         return model
 
-    def generate(self, tokens, max_new_tokens=1024, temperature=0.3, top_k=100, stop_token=None):
+    def generate(self, tokens, max_new_tokens=1024, temperature=0.8, top_k=100, stop_token=None):
         with torch.no_grad():
             with ctx:
                 y = self.model.generate(tokens, 
@@ -42,6 +42,12 @@ class GPTModel:
                                         stop_token=stop_token)
                 
                 y = y.detach().cpu().numpy()[0]
+                start_idx = np.where(y == cfg.INFER_TOKEN[self.target])[0]
+                end_idx = np.where(y == cfg.STOP_TOKEN[self.target])[0]
+                if end_idx.any():
+                    y = y[start_idx[0] + 1: end_idx[0]]
+                else:
+                    y = y[start_idx[0] + 1:]
         return y
 
 
@@ -54,7 +60,7 @@ def prepare_input(source_tokens, target_prompt, source, target, prompt_length):
                                             target=target,
                                             prompt_length=prompt_length)
     
-    source_tokens = np.hstack([source_tokens, prompt_arr])
+    source_tokens = np.hstack([source_tokens, prompt_arr, cfg.INFER_TOKEN[target]])
     source_tokens = (torch.tensor(source_tokens,
                                 dtype=torch.long,
                                 device=device)[None, ...])
@@ -63,9 +69,6 @@ def prepare_input(source_tokens, target_prompt, source, target, prompt_length):
 
 
 def run_tts():
-    semantic_prompt = np.load('/home/apurva/.cache/huggingface/hub/datasets--cmeraki--gsxl_tokens/snapshots/15630e7e6d09e2db7c12a8d449ec9c0d8877cd62/semantic/AUD0000000007_S0000008.npy')
-    acoustic_prompt = np.load('/home/apurva/.cache/huggingface/hub/datasets--cmeraki--gsxl_tokens/snapshots/15630e7e6d09e2db7c12a8d449ec9c0d8877cd62/acoustic/AUD0000000007_S0000008.npy')
-    
     text_semantic_model = GPTModel(path='data/models/out_400b_ft_xl/text_semantic/',
                                    source=TEXT,
                                    target=SEMANTIC,
@@ -76,38 +79,39 @@ def run_tts():
                                        target=ACOUSTIC,
                                        device=device)
 
-    text = "MERCUTIO <COMMA> KINSMAN TO THE PRINCE AND FRIEND TO ROMEO <PERIOD>".lower()
+    text = "MIGHT ACTUALLY BE A TREATMENT FOR AILING HEARTS <PERIOD>".lower()
     text_tokenizer = get_tokenizer(TEXT, device='cpu')
     text_tokens = np.asarray(text_tokenizer.encode(text))
-    print(text_tokens)
-
+    print("text tokens", text_tokens)
+    
     for i in range(100):
         input_tokens = prepare_input(text_tokens,
-                                     semantic_prompt,
+                                     None,
                                      source=TEXT, 
                                      target=SEMANTIC,
                                      prompt_length=cfg.PROMPT_LENGTH[SEMANTIC])
         
         print("input", input_tokens)
         
-        semantic_tokens = text_semantic_model.generate(input_tokens, stop_token=cfg.PAD_TOKEN[SEMANTIC])
-        input_length = cfg.max_source_tokens + cfg.PROMPT_LENGTH[SEMANTIC]
-        semantic_tokens = semantic_tokens[input_length:] - cfg.OFFSET[SEMANTIC]
-        
-        print("p", list(semantic_tokens))
+        semantic_tokens = text_semantic_model.generate(input_tokens, stop_token=cfg.STOP_TOKEN[SEMANTIC])
+        semantic_tokens = semantic_tokens - cfg.OFFSET[SEMANTIC]
+
+        print("semantic tokens", list(semantic_tokens))
+
         
         input_tokens = prepare_input(semantic_tokens,
-                                     acoustic_prompt,
+                                     None,
                                      source=SEMANTIC,
                                      target=ACOUSTIC,
                                      prompt_length=cfg.PROMPT_LENGTH[ACOUSTIC])
         
-        print("semantic", input_tokens.shape)
-        acoustic_tokens = semantic_acoustic_model.generate(input_tokens, stop_token=cfg.PAD_TOKEN[ACOUSTIC])
-        input_length = cfg.max_source_tokens + cfg.PROMPT_LENGTH[ACOUSTIC]
-        acoustic_tokens = acoustic_tokens[input_length:] - cfg.OFFSET[ACOUSTIC]
+        print("semantic input", input_tokens)
+        acoustic_tokens = semantic_acoustic_model.generate(input_tokens, stop_token=cfg.STOP_TOKEN[ACOUSTIC])
 
-        print("acoustic", acoustic_tokens)
+        acoustic_tokens = acoustic_tokens - cfg.OFFSET[ACOUSTIC]
+
+        print("acoustic", list(acoustic_tokens))
+
 
         acoustic_tokenizer = get_tokenizer(ACOUSTIC, device='cpu')
         wav = acoustic_tokenizer.decode(torch.tensor(acoustic_tokens))

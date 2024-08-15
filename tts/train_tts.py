@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from tts.gpt2_trainer import train as gpt_train
 from tts.gpt2_model import get_model
 from common import TEXT, SEMANTIC, ACOUSTIC
+from tqdm import tqdm
 
 DEVICE = 'cuda:0'
 
@@ -39,39 +40,54 @@ class cfg:
         ACOUSTIC: max_token_value + 3,
     }
 
-    PROMPT_TOKEN = {
+    INFER_TOKEN = {
         TEXT: max_token_value + 4,
         SEMANTIC: max_token_value + 5,
-        ACOUSTIC: max_token_value + 6,
+        ACOUSTIC: max_token_value + 6
     }
 
-    VOCAB_SIZE = (max(PROMPT_TOKEN.values()) // 64 + 1)*64
+    STOP_TOKEN = {
+        TEXT: max_token_value + 7,
+        SEMANTIC: max_token_value + 8,
+        ACOUSTIC: max_token_value + 9,
+    }
+
+    VOCAB_SIZE = (max(STOP_TOKEN.values()) // 64 + 1)*64
     
     max_source_tokens = 256
     
     PROMPT_LENGTH = {
-        SEMANTIC : 32,
-        ACOUSTIC : 64
+        SEMANTIC : 0,
+        ACOUSTIC : 0
     }
 
 print(cfg.__dict__)
 
 class DataLoader:
-    def __init__(self, data_dir, source, target, max_source_tokens=256, prompt_length=0):
+    def __init__(self, data_dir, source, target, max_source_tokens=256, prompt_length=0, max_files=None):
         self.data_dir = data_dir
         self.source = source
         self.target = target
-        self.files, self.filenames = self.load_files()
+        self.max_files = max_files
         self.max_source_tokens = max_source_tokens
         self.prompt_length = prompt_length
         self.prompting = False
-
+        
+        self.files, self.filenames = self.load_files()
+        
     def load_files(self):
         files = {}
         filenames = None
 
+
         for type in [self.source, self.target]:
-            files[type] = {Path(f).name: Path(f) for f in glob.glob(f"{self.data_dir}/{type}/*.npy")}
+            files[type] = {}
+            file_iter = tqdm(glob.iglob(f"{self.data_dir}/{type}/*.npy"), desc=f'reading {type}')
+            for f in file_iter:
+                files[type][Path(f).name] = Path(f)             
+                if self.max_files:
+                    if len(files[type]) >= self.max_files:
+                        break
 
             if not filenames:
                 filenames = set(files[type].keys())
@@ -106,12 +122,12 @@ class DataLoader:
         source_arr = source_arr + cfg.OFFSET[source]
         source_arr = np.reshape(source_arr, -1)
         source_arr = source_arr[0: max_source_tokens]
-        source_arr = np.pad(
-            source_arr,
-                (0, max_source_tokens - len(source_arr)),
-                constant_values=cfg.PAD_TOKEN[source],
-                mode="constant",
-            )
+        # source_arr = np.pad(
+        #     source_arr,
+        #         (0, max_source_tokens - len(source_arr)),
+        #         constant_values=cfg.PAD_TOKEN[source],
+        #         mode="constant",
+        #     )
         return source_arr
     
     @staticmethod
@@ -122,8 +138,8 @@ class DataLoader:
             target_arr = target_arr[:coarse_codebooks]
             target_arr = DataLoader.codebook_encoding(target_arr, per_codebook_size)
 
-        
-        target_arr = np.append(target_arr, cfg.PAD_TOKEN[target])
+        target_arr = target_arr.reshape(-1)
+
         return target_arr
 
     @staticmethod
@@ -133,12 +149,15 @@ class DataLoader:
             prompt_arr = np.pad(
             prompt_arr,
                 (0, prompt_length - len(prompt_arr)),
-                constant_values=cfg.PROMPT_TOKEN[target],
+                constant_values=cfg.PAD_TOKEN[target],
                 mode="constant",
             )
 
+        elif prompt_length > 0:
+            prompt_arr = np.array([cfg.PAD_TOKEN[target]] * prompt_length)
+
         else:
-            prompt_arr = np.array([cfg.PROMPT_TOKEN[target]] * prompt_length)
+            prompt_arr = []
 
         return prompt_arr
 
@@ -152,8 +171,8 @@ class DataLoader:
 
         # prepopulate with pad tokens
         # so we don't have to pad later
-        x = x + cfg.PAD_TOKEN[target]
-        y = y + cfg.PAD_TOKEN[target]
+        x = x + cfg.STOP_TOKEN[target]
+        y = y + cfg.STOP_TOKEN[target]
 
         for i in range(batch_size):
             f = some_filenames[i]
@@ -170,13 +189,15 @@ class DataLoader:
                                              target=self.target, 
                                              prompt_length=self.prompt_length)
             
-            tokens = np.hstack([source_arr, prompt_arr, target_arr])
+            tokens = np.hstack([source_arr, prompt_arr, cfg.INFER_TOKEN[target], target_arr]).astype(np.int64)
+            
 
             _x = tokens[:block_size]
             _y = tokens[1:block_size + 1]
             
             x[i][:len(_x)] = _x
             y[i][:len(_y)] = _y
+            
 
         return x, y
 
@@ -219,18 +240,19 @@ def train_translator(source, target, data_dir, out_dir, pretrained=None, prompt_
     gpt_train(model,
               get_batch=data_generator.get_batch,
               out_dir=out_dir,
-              steps=1000,
+              steps=6000,
               block_size=1024,
               eval_interval=100,
               eval_steps=10,
-              batch_size=40,
-              grad_accum_steps=4,
+              batch_size=56,
+              grad_accum_steps=8,
               device=DEVICE)
 
     return out_dir
 
 def train():
     data_dir = '/home/apurva/.cache/huggingface/hub/datasets--cmeraki--gsxl_tokens/snapshots/15630e7e6d09e2db7c12a8d449ec9c0d8877cd62'
+    # data_dir = '/home/apurva/.cache/huggingface/hub/datasets--cmeraki--gsxs_tokens/snapshots/0c898918a23a829f2878aa23123d0c85c1885c0d/'
     out_dir = Path('data/models/out_400b_ft_xl')
     train_translator(TEXT, SEMANTIC, data_dir, out_dir, prompt_length=cfg.PROMPT_LENGTH[SEMANTIC])
     train_translator(SEMANTIC, ACOUSTIC, data_dir, out_dir, prompt_length=cfg.PROMPT_LENGTH[ACOUSTIC])
