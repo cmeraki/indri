@@ -1,11 +1,11 @@
 import torch
 import torchaudio
 from datasets import load_dataset
-from audiolm.utils import convert_audio
-from audiolm.datalib import Dataset
+from tts.utils import convert_audio
+from datalib.datalib import Dataset
 from torio.io import CodecConfig
 from tqdm import tqdm
-from audiolm.tokenlib import AUDIO 
+from datalib.tokenlib import AUDIO
 
 
 def stream_samples(hf_repo_id):
