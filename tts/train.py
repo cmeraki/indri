@@ -230,8 +230,6 @@ def download_dataset(local_path):
     with open(f'{local_path}/success', 'w') as flag:
         flag.write('y')
 
-
-
 def train():
     from common import cache_dir
     data_dir = f'{cache_dir}/data/gs_xl_en_tokens/'

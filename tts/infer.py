@@ -9,6 +9,7 @@ from tts.train import DataLoader
 from common import SEMANTIC, TEXT, ACOUSTIC, device, ctx
 from common import Config as cfg
 from datalib.tokenlib import get_tokenizer
+from common import cache_dir
 
 
 def load_model(path):
@@ -60,17 +61,17 @@ def generate(model, source, target, source_tokens):
     target_tokens = target_tokens - cfg.OFFSET[target]
     return target_tokens
 
-def run_tts():
-    Path('samples').mkdir(exist_ok=True)
+def run_tts(size, text, outdir):
+    Path(outdir).mkdir(exist_ok=True)
     
     from huggingface_hub import snapshot_download
-    snapshot_download('cmeraki/tts_en_xl_30m', local_dir='data/models/tts_en_xl_30m/')
+    model_dir = f'{cache_dir}/models/tts_en_xl_{size}/'
+    snapshot_download(f'cmeraki/tts_en_xl_{size}', local_dir=model_dir)
 
-    text_semantic_model = load_model(path='data/models/tts_en_xl_30m/text_semantic/gpt_last.pt')
+    text_semantic_model = load_model(path=f'{model_dir}/text_semantic/gpt_last.pt')
+    semantic_acoustic_model = load_model(path=f'{model_dir}/semantic_acoustic/gpt_last.pt')
 
-    semantic_acoustic_model = load_model(path='data/models/tts_en_xl_30m/semantic_acoustic/gpt_last.pt')
-
-    text = "MIGHT ACTUALLY BE A TREATMENT FOR AILING HEARTS <PERIOD>".lower()
+    text = "this was the best of times and the worst of times <period>".lower()
     text_tokenizer = get_tokenizer(TEXT, device='cpu')
     text_tokens = np.asarray(text_tokenizer.encode(text))
 
@@ -93,4 +94,14 @@ def run_tts():
 
 
 if __name__ == "__main__":
-    run_tts()
+    from argparse import ArgumentParser
+    parser = ArgumentParser()
+    parser.add_argument('--size', default='30m', required=False)
+    parser.add_argument('--text', default='it was the best of times <comma> it was the worst of times', required=False)
+    parser.add_argument('--outdir', default='samples/', required=False)
+    
+    args = parser.parse_args()
+
+    run_tts(size=args.size,
+            text=args.text, 
+            outdir=args.outdir)
