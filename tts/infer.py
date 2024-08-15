@@ -71,7 +71,9 @@ def run_tts(size, text, outdir):
     text_semantic_model = load_model(path=f'{model_dir}/text_semantic/gpt_last.pt')
     semantic_acoustic_model = load_model(path=f'{model_dir}/semantic_acoustic/gpt_last.pt')
 
-    text = "this was the best of times and the worst of times <period>".lower()
+    if text is None:
+        text = "this was the best of times and the worst of times <period>".lower()
+    
     text_tokenizer = get_tokenizer(TEXT, device='cpu')
     text_tokens = np.asarray(text_tokenizer.encode(text))
 

@@ -24,7 +24,7 @@ Downloads pretrained models and runs inference on them.
 size can be one of 30m or 125m
 
 ```
-python -m tts.infer --size 30m
+python -m tts.infer --size 30m --text 'mary had a little lamb <comma> and she was white as snow'
 ```
 
 
