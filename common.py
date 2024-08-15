@@ -27,7 +27,7 @@ ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=
 DEVICE = 'cuda:0'
 
 cache_dir = os.path.expanduser("~/.cache/indri/")
-_ = Path(cache_dir).mkdir(exist_ok=True)
+_ = Path(cache_dir).mkdir(exist_ok=True, parents=True)
 print('cache at', cache_dir)
 
 
