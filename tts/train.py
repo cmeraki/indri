@@ -199,11 +199,11 @@ def train_translator(source, target, data_dir, out_dir, pretrained=None, prompt_
     gpt_train(model,
               get_batch=data_generator.get_batch,
               out_dir=out_dir,
-              steps=6000,
+              steps=16000,
               block_size=1024,
               eval_interval=100,
               eval_steps=10,
-              batch_size=56,
+              batch_size=40,
               grad_accum_steps=8,
               device=DEVICE)
 
