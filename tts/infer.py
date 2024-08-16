@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 from pathlib import Path
+from huggingface_hub import snapshot_download
 
 from encodec.utils import save_audio
 
@@ -11,11 +12,12 @@ from common import Config as cfg
 from datalib.tokenlib import get_tokenizer
 from common import cache_dir
 
+from common import Config as cfg
 
 def load_model(path):
     model = get_model(vocab_size=cfg.VOCAB_SIZE, 
                       device=device, 
-                      compile=False, 
+                      compile=True, 
                       path=path)
 
     model.eval()
@@ -61,49 +63,47 @@ def generate(model, source, target, source_tokens):
     target_tokens = target_tokens - cfg.OFFSET[target]
     return target_tokens
 
-def run_tts(size, text, outdir):
-    Path(outdir).mkdir(exist_ok=True)
-    
-    from huggingface_hub import snapshot_download
-    model_dir = f'{cache_dir}/models/tts_en_xl_{size}/'
-    snapshot_download(f'cmeraki/tts_en_xl_{size}', local_dir=model_dir)
+class AudioSemantic:
+    def __init__(self, size='125m'):
+        size = '125m'
+        model_dir = f'{cache_dir}/models/tts_en_xl_{size}/'
+        snapshot_download(f'cmeraki/tts_en_xl_{size}', local_dir=model_dir)
 
-    text_semantic_model = load_model(path=f'{model_dir}/text_semantic/gpt_last.pt')
-    semantic_acoustic_model = load_model(path=f'{model_dir}/semantic_acoustic/gpt_last.pt')
-
-    if text is None:
-        text = "this was the best of times and the worst of times <period>".lower()
-    
-    text_tokenizer = get_tokenizer(TEXT, device='cpu')
-    text_tokens = np.asarray(text_tokenizer.encode(text))
-
-    acoustic_tokenizer = get_tokenizer(ACOUSTIC, device='cpu')
-    
-    for i in range(100):
-        semantic_tokens = generate(model=text_semantic_model, 
+        self.text_semantic_model = load_model(path=f'{model_dir}/text_semantic/gpt_last.pt')
+        self.semantic_acoustic_model = load_model(path=f'{model_dir}/semantic_acoustic/gpt_last.pt')
+        self.text_tokenizer = get_tokenizer(TEXT, device='cpu')
+        self.acoustic_tokenizer = get_tokenizer(ACOUSTIC, device='cpu')
+        
+    def text_to_semantic(self, text):
+        text_tokens = np.asarray(self.text_tokenizer.encode(text))
+        semantic_tokens = generate(model=self.text_semantic_model,
                                    source_tokens=text_tokens, 
                                    source=TEXT, 
                                    target=SEMANTIC)
+        return semantic_tokens
         
-        acoustic_tokens = generate(model=semantic_acoustic_model, 
-                                   source_tokens=semantic_tokens, 
-                                   source=SEMANTIC, 
-                                   target=ACOUSTIC)
+    def semantic_to_audio(self, tokens):
+        acoustic_tokens = generate(model=self.semantic_acoustic_model, 
+                                source_tokens=tokens, 
+                                source=SEMANTIC, 
+                                target=ACOUSTIC)
 
-        wav = acoustic_tokenizer.decode(torch.tensor(acoustic_tokens))
-        
-        save_audio(wav[0], f'samples/tts_{i}.wav', sample_rate=24000)
-
+        wav = self.acoustic_tokenizer.decode(torch.tensor(acoustic_tokens))
+        return wav
+    
 
 if __name__ == "__main__":
     from argparse import ArgumentParser
     parser = ArgumentParser()
-    parser.add_argument('--size', default='30m', required=False)
-    parser.add_argument('--text', default='it was the best of times <comma> it was the worst of times', required=False)
-    parser.add_argument('--outdir', default='samples/', required=False)
+    parser.add_argument('--size', default='125m', required=False)
+    parser.add_argument('--text', default='this is a test <comma> one you should not fail <period>', required=False)
+    parser.add_argument('--output', default='test.wav', required=False)
     
     args = parser.parse_args()
-
-    run_tts(size=args.size,
-            text=args.text, 
-            outdir=args.outdir)
+    semlib = AudioSemantic(size=args.size)
+    semantic_tokens = semlib.text_to_semantic(args.text)
+    wav = semlib.semantic_to_audio(semantic_tokens)
+    print("=============")
+    print("Writing output to", args.output)
+    save_audio(wav=wav[0], path=args.output, sample_rate=24000)
+    print("=============")
