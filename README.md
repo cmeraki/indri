@@ -16,12 +16,11 @@ python -m tts.train
 
 1. Download already prepared token data from huggingface. uses 100GB of disk space. Downloads 50GB and untar takes 1 hour.  
 
-2. Train a model using downloaded tokens.  
+2. Train a model using downloaded tokens.
 
 
 ### Inference
 Downloads pretrained models and runs inference on them.
-size can be one of 30m or 125m
 
 ```
 python -m tts.infer --size 125m --text 'mary had a little lamb <comma> and she was white as snow'
