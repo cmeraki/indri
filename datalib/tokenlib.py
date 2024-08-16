@@ -197,7 +197,7 @@ def encode_files(dataset, outdir, type, device):
                                          sr,
                                          target_sr=tokenizer.audio_sample_rate,
                                          target_channels=1)
-
+                
                 tokens = tokenizer.encode(waveform)
                 np.save(outpath, tokens)
 

@@ -239,6 +239,7 @@ def train():
     
     train_translator(TEXT, SEMANTIC, data_dir, out_dir, prompt_length=0)
     train_translator(SEMANTIC, ACOUSTIC, data_dir, out_dir, prompt_length=0)
-
+    train_translator(SEMANTIC, TEXT, data_dir, out_dir, prompt_length=0)
+    
 if __name__ == '__main__':
     train()
