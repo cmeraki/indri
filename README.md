@@ -31,7 +31,7 @@ python -m tts.infer --size 125m --text 'mary had a little lamb <comma> and she w
 Since we don't have speaker profiles, every generation without past context, produces a different voice profiles. 
 
 Here are a few samples generated from 125m: 
-
-
-
-
+https://github.com/cmeraki/indri/raw/master/docs/samples/frodo_female.wav
+https://github.com/cmeraki/indri/raw/master/docs/samples/frodo_male.wav
+https://github.com/cmeraki/indri/raw/master/docs/samples/mary_female.wav
+https://github.com/cmeraki/indri/raw/master/docs/samples/mary_male.wav
