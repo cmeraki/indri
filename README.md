@@ -24,7 +24,14 @@ Downloads pretrained models and runs inference on them.
 size can be one of 30m or 125m
 
 ```
-python -m tts.infer --size 30m --text 'mary had a little lamb <comma> and she was white as snow'
+python -m tts.infer --size 125m --text 'mary had a little lamb <comma> and she was white as snow'
 ```
+
+### Samples
+Since we don't have speaker profiles, every generation without past context, produces a different voice profiles. 
+
+Here are a few samples generated from 125m: 
+
+
 
 
