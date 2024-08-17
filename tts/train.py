@@ -101,25 +101,6 @@ class DataLoader:
 
         return target_arr
 
-    @staticmethod
-    def prepare_prompt(prompt=None, prompt_length=0, target=ACOUSTIC):
-        if prompt:
-            prompt_arr = prompt[-prompt_length:]
-            prompt_arr = np.pad(
-            prompt_arr,
-                (0, prompt_length - len(prompt_arr)),
-                constant_values=cfg.PAD_TOKEN[target],
-                mode="constant",
-            )
-
-        elif prompt_length > 0:
-            prompt_arr = np.array([cfg.PAD_TOKEN[target]] * prompt_length)
-
-        else:
-            prompt_arr = []
-
-        return prompt_arr
-
     def load_batch(self, split, block_size, batch_size):
         source = self.source
         target = self.target
@@ -144,13 +125,8 @@ class DataLoader:
             
             target_arr = self.prepare_target(target_arr, target=self.target)
             
-            prompt_arr = self.prepare_prompt(target_arr if self.prompting else None,
-                                             target=self.target, 
-                                             prompt_length=self.prompt_length)
+            tokens = np.hstack([source_arr, cfg.INFER_TOKEN[target], target_arr]).astype(np.int64)
             
-            tokens = np.hstack([source_arr, prompt_arr, cfg.INFER_TOKEN[target], target_arr]).astype(np.int64)
-            
-
             _x = tokens[:block_size]
             _y = tokens[1:block_size + 1]
             

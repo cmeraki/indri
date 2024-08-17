@@ -106,7 +106,6 @@ def converse():
         # uncomment to speak text via tts
         # next_semantic_tokens = tokenizer.text_to_semantic(next_text)
         
-
         next_audio = tokenizer.semantic_to_audio(next_semantic_tokens)
         tmp_audio_file = '/tmp/test.wav'
         save_audio(next_audio[0], tmp_audio_file, sample_rate=24000)

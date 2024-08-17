@@ -61,6 +61,45 @@ def generate(model, source, target, source_tokens):
     target_tokens = target_tokens - cfg.OFFSET[target]
     return target_tokens
 
+
+def generate_long(model, source, target, source_tokens):
+    source_tokens = source_tokens + cfg.OFFSET[source]
+    max_tokens_one_shot = cfg.max_source_tokens//2
+    source_context_size = 64
+    target_context_size = source_context_size * 3
+    
+    target_tokens = np.asarray([])
+    source_index = 0
+    print(source_tokens.shape)
+    while source_index < len(source_tokens):
+        source_cut = source_tokens[source_index: source_index + max_tokens_one_shot]
+        source_index = source_index + max_tokens_one_shot - source_context_size
+        target_cut = target_tokens[-target_context_size:]
+        input_tokens = np.hstack([source_cut,
+                            cfg.INFER_TOKEN[target], 
+                            target_cut])
+
+        
+        input_tokens = (torch.tensor(input_tokens,
+                                dtype=torch.long,
+                                device=device)[None, ...])
+        
+        with torch.no_grad():
+            with ctx:
+                new_target_tokens = model.generate(input_tokens,
+                                    1024,
+                                    temperature=0.4,
+                                    top_k=100,
+                                    stop_token=cfg.STOP_TOKEN[target])
+                
+                new_target_tokens = new_target_tokens.detach().cpu().numpy()[0]
+        
+        new_target_tokens = new_target_tokens[len(input_tokens[0]):]
+        target_tokens = np.hstack([target_tokens, new_target_tokens])
+    
+    target_tokens = target_tokens - cfg.OFFSET[target]
+    return target_tokens
+
 class AudioSemantic:
     def __init__(self, size='125m'):
         model_dir = f'{cache_dir}/models/tts_en_xl_{size}/'
@@ -85,16 +124,34 @@ class AudioSemantic:
                                 source_tokens=tokens,
                                 source=SEMANTIC,
                                 target=ACOUSTIC)
+
         wav = self.acoustic_tokenizer.decode(torch.tensor(acoustic_tokens))
         return wav
 
     
+    def semantic_to_audio(self, tokens):
+        acoustic_tokens = generate_long(model=self.semantic_acoustic_model, 
+                                source_tokens=tokens,
+                                source=SEMANTIC,
+                                target=ACOUSTIC)
+
+        wav = self.acoustic_tokenizer.decode(torch.tensor(acoustic_tokens))
+        return wav
+
+
     def audio_to_semantic(self, waveform=None, wav=None):
         if wav:
             waveform = read_audio_file(wav)
 
         acoustic_tokens = self.audio_to_semantic.encode(waveform)
         return acoustic_tokens
+
+def normalize_text(text):
+    text = text.lower()
+    text = text.replace(",", " <comma>")
+    text = text.replace(".", " <period>")
+    text = text.replace("\n"," ")
+    return text
 
 if __name__ == "__main__":
     from argparse import ArgumentParser
@@ -104,17 +161,19 @@ if __name__ == "__main__":
     parser.add_argument('--output', default='test.wav', required=False)
     
     args = parser.parse_args()
+    
+    # this story has 500 semantic tokens
+    text = "There was a young boy in a village. He watched the sheep for the villagers. One day, he got bored. He shouted, wolf wolf. The villagers came running to help."
+
+    text = normalize_text(text)
+    
     semlib = AudioSemantic(size=args.size)
-    
-    # from tqdm import tqdm
-    # for i in tqdm(range(100)):
-    #     semantic_tokens = semlib.text_to_semantic(args.text)
-    
-    semantic_tokens = semlib.text_to_semantic(args.text)
-    # print(semantic_tokens.shape)
-    
-    wav = semlib.semantic_to_audio(semantic_tokens)
-    print("=============")
-    print("Writing output to", args.output)
-    save_audio(wav=wav[0], path=args.output, sample_rate=24000)
-    print("=============")
+    for i in range(100):
+        semantic_tokens = semlib.text_to_semantic(text)
+
+        
+        wav = semlib.semantic_to_audio(semantic_tokens)
+        print("=============")
+        print("Writing output to", args.output)
+        save_audio(wav=wav[0], path=f'test_{i}.wav', sample_rate=24000)
+        print("=============")
