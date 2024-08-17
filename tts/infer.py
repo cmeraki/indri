@@ -16,6 +16,7 @@ from common import Config as cfg
 from tts.utils import read_audio_file
 
 def load_model(path):
+    print(path)
     model = get_model(vocab_size=cfg.VOCAB_SIZE,
                       device=device, 
                       compile=True,
@@ -66,10 +67,10 @@ def generate(model, source, target, source_tokens):
 
 class AudioSemantic:
     def __init__(self, size='125m'):
-        size = '125m'
         model_dir = f'{cache_dir}/models/tts_en_xl_{size}/'
         snapshot_download(f'cmeraki/tts_en_xl_{size}', local_dir=model_dir)
 
+        
         self.text_semantic_model = load_model(path=f'{model_dir}/text_semantic/gpt_last.pt')
         self.semantic_acoustic_model = load_model(path=f'{model_dir}/semantic_acoustic/gpt_last.pt')
         self.text_tokenizer = get_tokenizer(TEXT, device='cpu')
@@ -105,13 +106,16 @@ if __name__ == "__main__":
     from argparse import ArgumentParser
     parser = ArgumentParser()
     parser.add_argument('--size', default='125m', required=False)
-    parser.add_argument('--text', default='this is a test <comma> one you should not fail <period>, if you fail there will be consequences, those consequences are not imaginable', required=False)
+    parser.add_argument('--text', default='this is a test <comma> one you should not fail <period>', required=False)
     parser.add_argument('--output', default='test.wav', required=False)
     
     args = parser.parse_args()
     semlib = AudioSemantic(size=args.size)
+    
     # from tqdm import tqdm
     # for i in tqdm(range(100)):
+    #     semantic_tokens = semlib.text_to_semantic(args.text)
+    
     semantic_tokens = semlib.text_to_semantic(args.text)
     # print(semantic_tokens.shape)
     

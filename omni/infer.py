@@ -83,7 +83,7 @@ def generate_next(prompt, modality, omni_model):
 def converse():
     omni_model = load_model(path='/home/apurva/.cache/indri/data/models/omni/omni/gpt_500.pt')
 
-    tokenizer = AudioSemantic(size='30m')
+    tokenizer = AudioSemantic(size='125m')
     
     human_token = tokenizer.text_tokenizer.encode(HUMAN)
     assistant_token = tokenizer.text_tokenizer.encode(ASSISTANT)
@@ -102,6 +102,10 @@ def converse():
         
         next_text = tokenizer.text_tokenizer.decode(next_text_tokens)
         print(next_text)
+
+        # uncomment to speak text via tts
+        # next_semantic_tokens = tokenizer.text_to_semantic(next_text)
+        
 
         next_audio = tokenizer.semantic_to_audio(next_semantic_tokens)
         tmp_audio_file = '/tmp/test.wav'

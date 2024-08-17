@@ -121,7 +121,7 @@ def train(model,
         local_iter_num += 1
 
     model_fname = f"{out_dir}/gpt_last.pt"
-    torch.save({"model": model.state_dict()}, model_fname)
+    torch.save({"model": model.state_dict(), "config": model.config}, model_fname)
 
     return model_fname
 

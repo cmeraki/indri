@@ -5,6 +5,7 @@ Modify nanogpt to model audio
 import math
 import inspect
 from dataclasses import dataclass
+import json
 
 import torch
 import torch.nn as nn
@@ -317,6 +318,12 @@ def get_model(n_layer=12,
                       bias=bias,
                       vocab_size=vocab_size,
                       dropout=dropout)
+
+    if path:
+        config = torch.load(path)['config']
+        model_args.update(config)
+    
+    print(model_args)
 
     gptconf = GPTConfig(**model_args)
     model = GPT(gptconf)
