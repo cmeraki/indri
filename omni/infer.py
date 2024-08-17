@@ -17,7 +17,13 @@ from tts.utils import read_audio_file
 from omni.instructlib import HUMAN, ASSISTANT
 from tts.infer import AudioSemantic
 from omni.instructlib import to_text_tokens
+import simpleaudio as sa
 
+
+def playwav(wav):
+    wave_obj = sa.WaveObject.from_wave_file(wav)
+    play_obj = wave_obj.play()
+    play_obj.wait_done()
 
 def load_model(path):
     model = GPT.from_pretrained('cmeraki/gpt2-124M-400B')
@@ -63,29 +69,44 @@ def generate(model, tokens, stop_token):
     
     return target_tokens
 
+def generate_next(prompt, modality, omni_model):
+    alltokens = np.hstack(prompt  + [cfg.INFER_TOKEN[modality]])
+    # print("input", alltokens)
+
+    result = generate(model=omni_model, 
+                      tokens=alltokens, 
+                      stop_token=cfg.STOP_TOKEN[modality])
+    
+    result = result[len(alltokens):] - cfg.OFFSET[modality]
+    return result
+
 def converse():
     omni_model = load_model(path='/home/apurva/.cache/indri/data/models/omni/omni/gpt_500.pt')
 
-    tokenizer = AudioSemantic()
+    tokenizer = AudioSemantic(size='30m')
     
     human_token = tokenizer.text_tokenizer.encode(HUMAN)
     assistant_token = tokenizer.text_tokenizer.encode(ASSISTANT)
 
     print('human_token', human_token, 'assistant_token', assistant_token)
+    for i in range(100):
+        if i > 0:
+            human_text = input('human:')
+        else:
+            human_text = 'warmup'
+        
+        human_text_tokens = to_text_tokens(human_text, tokenizer)
+        human_prompt = [human_token, human_text_tokens, assistant_token]
+        next_text_tokens = generate_next(human_prompt, TEXT, omni_model=omni_model)
+        next_semantic_tokens = generate_next(human_prompt, SEMANTIC, omni_model=omni_model)
+        
+        next_text = tokenizer.text_tokenizer.decode(next_text_tokens)
+        print(next_text)
 
-    human_text = 'what is the capital of france ?'
-    human_text_tokens = to_text_tokens(human_text, tokenizer)
-
-    alltokens = np.hstack([human_token, human_text_tokens, assistant_token, cfg.INFER_TOKEN[SEMANTIC]])
-    print("input", alltokens)
-
-    result = generate(model=omni_model, tokens=alltokens, stop_token=cfg.STOP_TOKEN[SEMANTIC])
-    result = result[len(alltokens):] - cfg.OFFSET[SEMANTIC] 
-    print("output", result)
-    wav = tokenizer.semantic_to_audio(result)[0]
-    save_audio(wav, 'omni_test.wav', sample_rate=24000)
-
-    # print("decode", tokenizer.text_tokenizer.decode(result[len(alltokens):]))
+        next_audio = tokenizer.semantic_to_audio(next_semantic_tokens)
+        tmp_audio_file = '/tmp/test.wav'
+        save_audio(next_audio[0], tmp_audio_file, sample_rate=24000)
+        playwav(tmp_audio_file)
 
 if __name__ == "__main__":
     from argparse import ArgumentParser
