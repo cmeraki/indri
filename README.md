@@ -37,7 +37,7 @@ https://github.com/user-attachments/assets/c28f8715-1023-400c-82be-c4b5610dc1b6
 
 ### Long inference
 ```
-python -m tts.long_infer --size 125m --text 'mary had a little lamb <comma> and she was white as snow'
+python -m tts.long_infer
 ```
 This runs the model iteratively using prior generation as a part of context
 
