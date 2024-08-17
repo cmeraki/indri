@@ -46,15 +46,14 @@ def generate(model, source, target, source_tokens):
                                 device=device)[None, ...])
     
     
-    with torch.no_grad():
-        with ctx:
-            target_tokens = model.generate(input_tokens,
-                                1024,
-                                temperature=0.4,
-                                top_k=100,
-                                stop_token=cfg.STOP_TOKEN[target])
-            
-            target_tokens = target_tokens.detach().cpu().numpy()[0]
+    with ctx:
+        target_tokens = model.generate(input_tokens,
+                            1024,
+                            temperature=0.4,
+                            top_k=100,
+                            stop_token=cfg.STOP_TOKEN[target])
+        
+        target_tokens = target_tokens.detach().cpu().numpy()[0]
     
     target_tokens = extract_new_tokens(target_tokens, target=target)
         

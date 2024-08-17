@@ -245,7 +245,7 @@ class GPT(nn.Module):
 
         return model
 
-    @torch.no_grad()
+    @torch.inference_mode()
     def generate(self, idx, max_new_tokens, temperature=1.0, top_k=None, stop_token=None):
         """
         Take a conditioning sequence of indices idx (LongTensor of shape (b,t)) and complete
