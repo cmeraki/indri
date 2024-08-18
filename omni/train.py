@@ -68,7 +68,6 @@ class DataLoader:
 
 def train_omni(data_dir, out_dir, pretrained=None):
     vocab_size = cfg.VOCAB_SIZE
-    out_dir = out_dir / 'omni'
 
     # model = get_model(vocab_size=vocab_size,
     #                   device=DEVICE,
@@ -125,12 +124,16 @@ def download_dataset(local_path):
 
 def train():
     from common import cache_dir
-    data_dir = f'instruct_tokens/'
+    
     
     # download_dataset(data_dir)
     out_dir = Path(f'{cache_dir}/data/models/omni/')
     
+    data_dir = f'{cache_dir}/omni/pretrain_tokens/'
     train_omni(data_dir, out_dir, pretrained='cmeraki/gpt2-124M-400B')
+    
+    data_dir = f'{cache_dir}/omni/instruct_tokens/'
+    train_omni(data_dir, out_dir, pretrained=out_dir)
 
     # dl = DataLoader(data_dir)
     # batch = dl.get_batch('train', DEVICE, 1024, 1)
