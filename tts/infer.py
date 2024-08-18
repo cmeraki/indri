@@ -49,7 +49,7 @@ def generate(model, source, target, source_tokens):
     with ctx:
         target_tokens = model.generate(input_tokens,
                             1024,
-                            temperature=0.4,
+                            temperature=0.8,
                             top_k=100,
                             stop_token=cfg.STOP_TOKEN[target])
         

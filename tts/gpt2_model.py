@@ -197,7 +197,7 @@ class GPT(nn.Module):
     @classmethod
     def from_pretrained(cls, model_type, weights=None):
         """Loads pretrained GPT-2 model weights from huggingface"""
-        assert model_type in {'gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl', 'cmeraki/gpt2-124M-400B'}
+        assert model_type in {'gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl', 'cmeraki/gpt2-124M-400B', 'mdouglas/llmc-gpt2-774M-150B'}
         from transformers import GPT2LMHeadModel
         print("loading weights from pretrained gpt: %s" % model_type)
 
@@ -207,7 +207,8 @@ class GPT(nn.Module):
             'gpt2-medium':  dict(n_layer=24, n_head=16, n_embd=1024), # 350M params
             'gpt2-large':   dict(n_layer=36, n_head=20, n_embd=1280), # 774M params
             'gpt2-xl':      dict(n_layer=48, n_head=25, n_embd=1600), # 1558M params
-            'cmeraki/gpt2-124M-400B': dict(n_layer=12, n_head=12, n_embd=768) # 124M params
+            'cmeraki/gpt2-124M-400B': dict(n_layer=12, n_head=12, n_embd=768), # 124M params
+            'mdouglas/llmc-gpt2-774M-150B': dict(n_layer=36, n_head=20, n_embd=1280)
 
         }[model_type]
         config_args['vocab_size'] = 50257 # always 50257 for GPT model checkpoints

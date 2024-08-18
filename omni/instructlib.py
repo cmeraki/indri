@@ -93,7 +93,7 @@ def normalize_text(text):
     return text
 
 
-
+# last run at 37117/285460
 def instruct_to_semantic():
     # add kv caching to gpt to make this faster
     from tts.infer import AudioSemantic

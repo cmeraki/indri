@@ -92,7 +92,7 @@ def train_omni(data_dir, out_dir, pretrained=None):
     gpt_train(model,
               get_batch=data_generator.get_batch,
               out_dir=out_dir,
-              steps=1000,
+              steps=6000,
               block_size=1024,
               eval_interval=100,
               batch_size=32,
@@ -129,11 +129,11 @@ def train():
     # download_dataset(data_dir)
     out_dir = Path(f'{cache_dir}/data/models/omni/')
     
-    data_dir = f'{cache_dir}/omni/pretrain_tokens/'
+    data_dir = f'{cache_dir}/omni/instruct_tokens/'
     train_omni(data_dir, out_dir, pretrained='cmeraki/gpt2-124M-400B')
     
-    data_dir = f'{cache_dir}/omni/instruct_tokens/'
-    train_omni(data_dir, out_dir, pretrained=out_dir)
+    # data_dir = f'{cache_dir}/omni/instruct_tokens/'
+    # train_omni(data_dir, out_dir, pretrained=out_dir)
 
     # dl = DataLoader(data_dir)
     # batch = dl.get_batch('train', DEVICE, 1024, 1)

@@ -81,7 +81,7 @@ def generate_next(prompt, modality, omni_model):
     return result
 
 def converse():
-    omni_model = load_model(path='/home/apurva/.cache/indri/data/models/omni/omni/gpt_500.pt')
+    omni_model = load_model(path='/home/apurva/.cache/indri/data/models/omni/gpt_500.pt')
 
     tokenizer = AudioSemantic(size='125m')
     
@@ -93,15 +93,15 @@ def converse():
         if i > 0:
             human_text = input('human:')
         else:
-            human_text = 'warmup'
+            human_text = 'what is the capital of france ?'
         
         human_text_tokens = to_text_tokens(human_text, tokenizer)
         human_prompt = [human_token, human_text_tokens, assistant_token]
         next_text_tokens = generate_next(human_prompt, TEXT, omni_model=omni_model)
         next_semantic_tokens = generate_next(human_prompt, SEMANTIC, omni_model=omni_model)
-        
+        print("semantic", list(next_semantic_tokens[:256]), next_semantic_tokens.shape)
         next_text = tokenizer.text_tokenizer.decode(next_text_tokens)
-        print(next_text)
+        print("text", next_text)
 
         # uncomment to speak text via tts
         # next_semantic_tokens = tokenizer.text_to_semantic(next_text)
