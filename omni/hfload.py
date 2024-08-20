@@ -44,6 +44,7 @@ def convert_to_hf(path, device: str = 'cpu'):
 
     config = GPT2Config(**model_args)
     model = GPT2LMHeadModel(config)
+    model.to(device)
     model.load_state_dict(clean_custom_gpt, strict=False)
 
     return model
