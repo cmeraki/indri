@@ -68,11 +68,7 @@ class DataLoader:
 
 def train_omni(data_dir, out_dir, pretrained=None):
     vocab_size = cfg.VOCAB_SIZE
-
-    # model = get_model(vocab_size=vocab_size,
-    #                   device=DEVICE,
-    #                   path=pretrained)
-
+    
     model = GPT.from_pretrained(pretrained)
     model.expand_vocab(new_vocab_size=vocab_size)
     model.to(DEVICE)

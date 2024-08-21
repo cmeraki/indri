@@ -106,7 +106,7 @@ def make_dataset():
 
 def tokenize():
     import audiotoken
-    from audiolm.tokenlib import AUDIO
+    from datalib.tokenlib import AUDIO
     
     dataset = Dataset(repo_id='peoples_speech')
     from glob import glob

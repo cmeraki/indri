@@ -93,7 +93,7 @@ def train(model,
             losses = estimate_loss(model, ctx, eval_batches)
             all_losses['val'] = losses
             model_fname = f"{out_dir}/gpt_{iter_num}.pt"
-            torch.save({"model":  model.state_dict()}, model_fname)
+            torch.save({"model": model.state_dict(), "config": model.config}, model_fname)
 
         for micro_step in range(grad_accum_steps):
             with ctx:

@@ -5,6 +5,7 @@ from datasets import load_dataset
 import numpy as np
 from tqdm import tqdm
 import re
+from pathlib import Path
 
 # tts datasets (audio-semantic)
 # <text> how do i say this : 'text' </text> <assistant> semantic_tokens </assitant>
@@ -97,11 +98,12 @@ def normalize_text(text):
 def instruct_to_semantic():
     # add kv caching to gpt to make this faster
     from tts.infer import AudioSemantic
-    tokenizer = AudioSemantic(size='30m')
+    tokenizer = AudioSemantic(size='125m')
     human_token = tokenizer.text_tokenizer.encode(HUMAN)
     assistant_token = tokenizer.text_tokenizer.encode(ASSISTANT)
     print('human_token', human_token, 'assistant_token', assistant_token)
     output_dir = f'{cache_dir}/instruct_tokens/'
+    Path(output_dir).mkdir(exist_ok=True, parents=True)
     arr = []
 
     total = 0
@@ -114,7 +116,7 @@ def instruct_to_semantic():
     digits =  r'\d'
     seen = {}
     for ds in datasets:
-        for sample in tqdm(ds()):
+        for sample in tqdm(ds(), 'preparing samples:'):
             if sample[HUMAN] and sample[ASSISTANT]:
                 if (len(sample[HUMAN].split()) > 1) and (len(sample[ASSISTANT].split()) > 1):
                     if not bool(re.search(code_symbols, sample[HUMAN] + sample[ASSISTANT])):
@@ -124,9 +126,7 @@ def instruct_to_semantic():
                                 seen[x] = 1
                                 if (len(tokenizer.text_tokenizer.encode(sample[HUMAN])) < 100):
                                     samples.append(sample)
-            # if len(samples) > 1000:
-            #     break
-        
+    
     print(len(samples))
     samples = sorted(samples, key=lambda x:len(x[HUMAN]) + len(x[ASSISTANT]))
     # n_tokens = 0
@@ -137,26 +137,23 @@ def instruct_to_semantic():
         human = sample[HUMAN]
         assistant = sample[ASSISTANT]
         id = sample[ID]
-        try:
-            human_tokens = [to_text_tokens(human, tokenizer),   
-                            to_semantic_tokens(human, tokenizer)]
-            
-            assistant_tokens = [to_text_tokens(assistant, tokenizer), 
-                                to_semantic_tokens(assistant, tokenizer)]
-
-            sid = 0
-            for i in human_tokens:
-                for j in assistant_tokens:
-                    alltokens = np.hstack([human_token, i, assistant_token, j])
-                    alltokens = alltokens.astype(dtype=np.uint16)
-                    # print(alltokens)
-                    opath = output_dir + f'{id}_{sid}.npy'
-                    np.save(opath, alltokens)
-                    sid += 1
         
-        except:
-            print('failed', id, human, assistant)
+        human_tokens = [to_text_tokens(human, tokenizer),   
+                        to_semantic_tokens(human, tokenizer)]
+        
+        assistant_tokens = [to_text_tokens(assistant, tokenizer), 
+                            to_semantic_tokens(assistant, tokenizer)]
 
+        sid = 0
+        for i in human_tokens:
+            for j in assistant_tokens:
+                alltokens = np.hstack([human_token, i, assistant_token, j])
+                alltokens = alltokens.astype(dtype=np.uint16)
+                # print(alltokens)
+                opath = output_dir + f'{id}_{sid}.npy'
+                np.save(opath, alltokens)
+                sid += 1
+    
     print(good, total, n_tokens)
 
 if __name__ == '__main__':

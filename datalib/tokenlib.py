@@ -75,13 +75,12 @@ class HubertTokenizer:
     def decode(self, tokens):
         return tokens
 
-
 class TextTokenizer:
     def __init__(self, device='cpu', name='cmeraki/gpt2-124M-400B'):
         self.type = TEXT
         self.tokenizer = AutoTokenizer.from_pretrained(name)
         print("text vocab size", self.tokenizer.vocab_size)
-        
+
     def encode(self, text: str):
         tokens = self.tokenizer.encode(text)
         return tokens
@@ -148,7 +147,6 @@ class EncodecTokenizer:
     def decode(self, tokens):
         model = self.load_model(bandwidth=6, device=self.device)
         tokens = self.deserialize_tokens(tokens)
-        print(tokens)
         good_audio = bark.api.generate_fine(x_coarse_gen=tokens[0:2, :], silent=False)
         good_audio = np.expand_dims(good_audio, axis=0)
         good_audio = torch.from_numpy(good_audio)
@@ -167,7 +165,7 @@ def get_tokenizer(type, device):
 
     if type == TEXT:
         tokenizer = TextTokenizer()
-    
+
 
     return tokenizer
 
@@ -198,7 +196,7 @@ def encode_files(dataset, outdir, type, device):
                                          sr,
                                          target_sr=tokenizer.audio_sample_rate,
                                          target_channels=1)
-                
+
                 tokens = tokenizer.encode(waveform)
                 np.save(outpath, tokens)
 
