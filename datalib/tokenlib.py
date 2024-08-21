@@ -133,7 +133,7 @@ class EncodecTokenizer:
         encoded_frames = self.model.encode(waveform)
 
         codes = torch.cat([encoded[0] for encoded in encoded_frames], dim=-1)
-        codes = codes.detach()[0].cpu()
+        codes = codes.detach()[0].cpu().numpy()
         # codes = self.codebook_encoding(codes)
         # codes = self.add_start_token(codes)
         return codes

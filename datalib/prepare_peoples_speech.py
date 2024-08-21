@@ -10,8 +10,8 @@ from tqdm import tqdm
 from pathlib import Path
 
 from tts.utils import convert_audio
-from datalib import Dataset
-from tokenlib import get_tokenizer, ACOUSTIC, SEMANTIC
+from datalib.datalib import Dataset
+from datalib.tokenlib import get_tokenizer, ACOUSTIC, SEMANTIC, TEXT
 
 
 def process_flac_files_in_tar(tar_path):
@@ -116,18 +116,28 @@ def tokenize():
     print("nfiles", len(files))
     print("from", dataset.dirs[AUDIO], "to", dataset.dirs[SEMANTIC])
 
-    tokenizer = audiotoken.AudioToken(tokenizer='semantic_s', device='cuda:0')
-    tokenizer.encode_batch_files(audio_files=files,
-                                 outdir=dataset.dirs[SEMANTIC],
-                                 num_workers=4,
-                                 batch_size=32)
+    # tokenizer = audiotoken.AudioToken(tokenizer='semantic_s', device='cuda:0')
+    # tokenizer.encode_batch_files(audio_files=files,
+    #                              outdir=dataset.dirs[SEMANTIC],
+    #                              num_workers=4,
+    #                              batch_size=32)
     
 
-    tokenizer = audiotoken.AudioToken(tokenizer='acoustic', device='cuda:0')
-    tokenizer.encode_batch_files(audio_files=files,
-                                outdir=dataset.dirs[ACOUSTIC],
-                                num_workers=4,
-                                batch_size=32)
+    # tokenizer = audiotoken.AudioToken(tokenizer='acoustic', device='cuda:0', compile=True)
+    # tokenizer.encode_batch_files(audio_files=files,
+    #                             outdir=dataset.dirs[ACOUSTIC],
+    #                             num_workers=4,
+    #                             chunk_size=15,
+    #                             batch_size=128)
+
+
+
+    dataset = Dataset(repo_id='peoples_speech')
+    tokenizer = get_tokenizer(TEXT, device='cuda:0')
+    for item in tqdm(dataset.iter_dataset(), desc='iterating...'):
+        tokens = tokenizer.encode(item.raw_text)  
+        token_path = dataset.get_absolute_path(item.text_tokens)
+        np.save(token_path, tokens)
 
 
 # def test_dataset():

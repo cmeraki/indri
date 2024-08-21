@@ -1,7 +1,7 @@
 import json
 
 from dataclasses import dataclass, asdict
-from audiolm.tokenlib import TEXT, SEMANTIC, ACOUSTIC, AUDIO, ANNOTATIONS, TOKENS
+from datalib.tokenlib import TEXT, SEMANTIC, ACOUSTIC, AUDIO, ANNOTATIONS, TOKENS
 import tarfile
 import os
 from pathlib import Path
@@ -32,10 +32,13 @@ class Sample:
 class Dataset:
     def __init__(self,
                  repo_id,
-                 base_path=Path.home() / '.cache/indri/'):
-
+                 base_path=Path.home() / '.cache/indri/', 
+                 audio_format='.wav'):
+    
         self.base_path = base_path
         self.base_path.mkdir(exist_ok=True)
+
+        self.audio_format = audio_format
 
         self.repo_id = repo_id
         self.local_path = base_path / self.repo_id
@@ -110,7 +113,7 @@ class Dataset:
     def create_sample(self, id):
         sample = Sample()
         sample.id = id
-        sample.audio_path = str(f'{AUDIO}/{id}.wav')
+        sample.audio_path = str(f'{AUDIO}/{id}{self.audio_format}')
         sample.semantic_tokens = str(f'{TOKENS}/{SEMANTIC}/{id}.npy')
         sample.acoustic_tokens = str(f'{TOKENS}/{ACOUSTIC}/{id}.npy')
         sample.text_tokens = str(f'{TOKENS}/{TEXT}/{id}.npy')
