@@ -108,7 +108,7 @@ if __name__ == "__main__":
     from argparse import ArgumentParser
     parser = ArgumentParser()
     parser.add_argument('--size', default='125m', required=False)
-    parser.add_argument('--text', default='this is a test <comma> one you should not fail <period> failure will have consequences <period>', required=False)
+    parser.add_argument('--text', default='this is a test <comma> one you should not fail <period>', required=False)
     parser.add_argument('--output', default='test.wav', required=False)
     
     args = parser.parse_args()
@@ -124,6 +124,6 @@ if __name__ == "__main__":
     wav = semlib.semantic_to_audio(semantic_tokens)
     print("=============")
     print("Writing output to", args.output)
-    save_audio(wav=wav[0], path=f'test_{i}.wav', sample_rate=24000)
+    save_audio(wav=wav[0], path='test.wav', sample_rate=24000)
     print("=============")
 
