@@ -15,6 +15,13 @@ from common import cache_dir
 from common import Config as cfg
 from tts.utils import read_audio_file
 
+def preprocess_text(text):
+    text = text.lower()
+    text = text.replace(",", " <comma>")
+    text = text.replace(".", " <period>")
+    text = text.replace("\n"," ")
+    return text
+
 def load_model(path):
     print(path)
     model = get_model(vocab_size=cfg.VOCAB_SIZE,
@@ -104,31 +111,55 @@ class AudioSemantic:
     def __init__(self, size='125m'):
         model_dir = f'{cache_dir}/models/tts_en_xl_{size}/'
         snapshot_download(f'cmeraki/tts_en_xl_{size}', local_dir=model_dir)
-        
+
         self.text_semantic_model = load_model(path=f'{model_dir}/text_semantic/gpt_last.pt')
         self.semantic_acoustic_model = load_model(path=f'{model_dir}/semantic_acoustic/gpt_last.pt')
         self.text_tokenizer = get_tokenizer(TEXT, device='cpu')
         self.acoustic_tokenizer = get_tokenizer(ACOUSTIC, device='cpu')
         self.semantic_tokenizer = get_tokenizer(SEMANTIC, device=device)
-        
+
     def text_to_semantic(self, text):
         text_tokens = np.asarray(self.text_tokenizer.encode(text))
         semantic_tokens = generate(model=self.text_semantic_model,
-                                   source_tokens=text_tokens, 
+                                   source_tokens=text_tokens,
                                    source=TEXT,
                                    target=SEMANTIC)
         return semantic_tokens
-        
+
+    def text_to_semantic_long(self, text):
+        """
+        Convert text to semantic tokens
+        Split text by <period> and tokenize each sentence
+        Generate semantic tokens for each sentence
+        Return concatenated semantic tokens
+        """
+        text = preprocess_text(text)
+        # Split text by <period> and tokenize each sentence
+        sentences = text.split('<period>')
+
+        semantic_tokens = []
+        for sentence in sentences:
+            sentence_tokens = np.asarray(self.text_tokenizer.encode(sentence))
+            semantic_tokens.extend(
+                generate(
+                    model=self.text_semantic_model,
+                    source_tokens=sentence_tokens,
+                    source=TEXT,
+                    target=SEMANTIC
+                )
+            )
+
+        return np.array(semantic_tokens)
+
     def semantic_to_audio(self, tokens):
-        acoustic_tokens = generate(model=self.semantic_acoustic_model, 
-                                source_tokens=tokens,
-                                source=SEMANTIC,
-                                target=ACOUSTIC)
+        acoustic_tokens = generate(model=self.semantic_acoustic_model,
+                                   source_tokens=tokens,
+                                   source=SEMANTIC,
+                                   target=ACOUSTIC)
 
         wav = self.acoustic_tokenizer.decode(torch.tensor(acoustic_tokens))
         return wav
 
-    
     def semantic_to_audio_long(self, tokens):
         acoustic_tokens = generate_long(model=self.semantic_acoustic_model, 
                                 source_tokens=tokens,
