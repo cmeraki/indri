@@ -116,11 +116,11 @@ def tokenize():
     print("nfiles", len(files))
     print("from", dataset.dirs[AUDIO], "to", dataset.dirs[SEMANTIC])
 
-    # tokenizer = audiotoken.AudioToken(tokenizer='semantic_s', device='cuda:0')
-    # tokenizer.encode_batch_files(audio_files=files,
-    #                              outdir=dataset.dirs[SEMANTIC],
-    #                              num_workers=4,
-    #                              batch_size=32)
+    tokenizer = audiotoken.AudioToken(tokenizer='semantic_s', device='cuda:0')
+    tokenizer.encode_batch_files(audio_files=files,
+                                 outdir=dataset.dirs[SEMANTIC],
+                                 num_workers=4,
+                                 batch_size=32)
     
 
     # tokenizer = audiotoken.AudioToken(tokenizer='acoustic', device='cuda:0', compile=True)
