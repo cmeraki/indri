@@ -29,14 +29,17 @@ def convert_to_hf(path, device: str = 'cpu'):
         embd_pdrop=0,
         resid_pdrop=0,
         summary_first_dropout=0,
-        activation_function='gelu'
+        activation_function='gelu',
     )
-
-    model_args.update(custom_gpt_config)
-
-    print(model_args)
-
+    
     config = GPT2Config(**model_args)
+    
+    config.n_layer = custom_gpt_config.n_layer
+    config.n_head = custom_gpt_config.n_head
+    config.vocab_size = custom_gpt_config.vocab_size
+    config.n_embd = custom_gpt_config.n_embd
+    config.n_positions = custom_gpt_config.block_size
+
     model = GPT2LMHeadModel(config)
     model.to(device)
     model.load_state_dict(clean_custom_gpt, strict=False)

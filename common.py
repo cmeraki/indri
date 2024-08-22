@@ -74,7 +74,7 @@ class Config:
     
     print('GAP tokens =', VOCAB_SIZE - max(STOP_TOKEN.values()))
 
-    max_source_tokens = 256
+    max_source_tokens = 768
     
     PROMPT_LENGTH = {
         SEMANTIC : 0,
