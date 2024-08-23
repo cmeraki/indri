@@ -1,33 +1,26 @@
-import numpy as np
+import math
 import torch
-from pathlib import Path
+import numpy as np
 from huggingface_hub import snapshot_download
 
 from encodec.utils import save_audio
 
+from common import cache_dir
+from common import Config as cfg
+from common import SEMANTIC, TEXT, ACOUSTIC, device, ctx
+from datalib.tokenlib import get_tokenizer
 from tts.gpt2_model import get_model
 from tts.train import DataLoader
-from common import SEMANTIC, TEXT, ACOUSTIC, device, ctx
-from common import Config as cfg
-from datalib.tokenlib import get_tokenizer
-from common import cache_dir
-
-from common import Config as cfg
 from tts.utils import read_audio_file
 
-def preprocess_text(text):
-    text = text.lower()
-    text = text.replace(",", " <comma>")
-    text = text.replace(".", " <period>")
-    text = text.replace("\n"," ")
-    return text
-
 def load_model(path):
-    print(path)
-    model = get_model(vocab_size=cfg.VOCAB_SIZE,
-                      device=device, 
-                      compile=True,
-                      path=path)
+    print(f'Loading model from {path}')
+    model = get_model(
+        vocab_size=cfg.VOCAB_SIZE,
+        device=device,
+        compile=True,
+        path=path
+    )
 
     model.eval()
     return model
@@ -42,70 +35,115 @@ def extract_new_tokens(y, target):
 
     return y
 
-def generate(model, source, target, source_tokens):
-    source_tokens = DataLoader.prepare_source(source_tokens,
-                                            source=source,
-                                            max_source_tokens=cfg.max_source_tokens)
-    
-    source_tokens = np.hstack([source_tokens, cfg.INFER_TOKEN[target]])
-    input_tokens = (torch.tensor(source_tokens,
-                                dtype=torch.long,
-                                device=device)[None, ...])
-    
-    
-    with torch.no_grad():
-        with ctx:
-            target_tokens = model.generate(input_tokens,
-                                1024,
-                                temperature=0.8,
-                                top_k=100,
-                                stop_token=cfg.STOP_TOKEN[target])
-            
-            target_tokens = target_tokens.detach().cpu().numpy()[0]
-    
-    target_tokens = extract_new_tokens(target_tokens, target=target)
-        
-    target_tokens = target_tokens - cfg.OFFSET[target]
-    return target_tokens
+def generate_long(
+        model,
+        source,
+        target,
+        source_tokens,
+        device,
+        max_source_tokens=cfg.max_source_tokens//2,
+        source_overlap=64,
+        temperature=0.4,
+        top_k=100,
+        prompt_dict: dict = None,
+    ):
 
+    all_source_toks = []
+    all_gen_toks = []
 
-def generate_long(model, source, target, source_tokens):
     source_tokens = source_tokens + cfg.OFFSET[source]
-    max_tokens_one_shot = cfg.max_source_tokens//2
-    source_context_size = 64
-    target_context_size = source_context_size * 3
-    
-    target_tokens = np.asarray([])
-    source_index = 0
-    print(source_tokens.shape)
-    while source_index < len(source_tokens):
-        source_cut = source_tokens[source_index: source_index + max_tokens_one_shot]
-        source_index = source_index + max_tokens_one_shot - source_context_size
-        target_cut = target_tokens[-target_context_size:]
-        input_tokens = np.hstack([source_cut,
-                            cfg.INFER_TOKEN[target], 
-                            target_cut])
 
-        
-        input_tokens = (torch.tensor(input_tokens,
-                                dtype=torch.long,
-                                device=device)[None, ...])
-        
+    if prompt_dict:
+        prompt_source_tokens = prompt_dict.get('source_tokens') + cfg.OFFSET[source]
+        prompt_target_tokens = prompt_dict.get('target_tokens') + cfg.OFFSET[target]
+
+        print(f'Prompt source tokens: {prompt_source_tokens.shape}, prompt target tokens: {prompt_target_tokens.shape}')
+
+    source_overlap = source_overlap
+    target_overlap = 0
+    source_stride = max_source_tokens - source_overlap
+
+    # Initialize as empty
+    target_tokens = np.asarray([])
+
+    print(
+        f'Source tokens shape: {source_tokens.shape}, Overlap: {source_overlap}, stride: {source_stride}, max tokens: {max_source_tokens}\n'
+    )
+
+    idx = 0
+    while idx < source_tokens.shape[-1]:
+        end_idx = idx + max_source_tokens
+        source_cut = source_tokens[idx: end_idx]
+        target_cut = target_tokens[-target_overlap:]
+
+        if idx == 0 and prompt_dict:
+            # end_idx = max_source_tokens - prompt_source_tokens.shape[-1]
+            # source_cut = source_tokens[idx: end_idx]
+            input_tokens = np.hstack([
+                prompt_source_tokens,
+                source_cut,
+                cfg.INFER_TOKEN[target],
+                prompt_target_tokens
+            ])
+
+        else:
+            input_tokens = np.hstack([
+                source_cut,
+                cfg.INFER_TOKEN[target],
+                target_cut
+            ])
+
+        input_tokens = torch.tensor(input_tokens, dtype=torch.long, device=device)[None, ...]
+
+        print(f'{idx}: Target cut shape: {target_cut.shape}, overlap: {target_overlap}')
+        print(f'{idx}: Source tokens shape: {source_cut.shape}, {input_tokens.shape}, start idx: {idx}, end idx: {end_idx}')
+
         with torch.no_grad():
             with ctx:
-                new_target_tokens = model.generate(input_tokens,
-                                    1024,
-                                    temperature=0.8,
-                                    top_k=100,
-                                    stop_token=cfg.STOP_TOKEN[target])
-                
-                new_target_tokens = new_target_tokens.detach().cpu().numpy()[0]
-        
-        new_target_tokens = new_target_tokens[len(input_tokens[0]):]
+                new_target_tokens = model.generate(
+                    input_tokens,
+                    1024,
+                    temperature=temperature,
+                    top_k=top_k,
+                    stop_token=cfg.STOP_TOKEN[target]
+                ).detach().cpu().numpy()[0]
+                print(f'{idx}: Total gen shape: {new_target_tokens.shape}')
+
+        # Only take newly generated tokens
+        new_target_tokens = new_target_tokens[input_tokens.shape[-1]:]
+
+        all_source_toks.append(input_tokens)
+        all_gen_toks.append(new_target_tokens)
+
+        if target == ACOUSTIC and new_target_tokens.shape[-1] % 2 != 0:
+            print(f'Target tokens shape: {new_target_tokens.shape} is not even')
+            return target_tokens, all_source_toks, all_gen_toks
+
+        # Update the target overlap ratio, for x toks, we generate y toks
+        num_source_new_toks = end_idx-idx
+        if idx:
+            num_source_new_toks -= source_overlap
+        target_overlap = source_overlap * new_target_tokens.shape[-1]/num_source_new_toks
+        target_overlap = math.ceil(target_overlap)
+        target_overlap = target_overlap + 1 if target_overlap%2 != 0 else target_overlap
+
+        print(f'{idx}: X toks: {num_source_new_toks}, Y toks: {new_target_tokens.shape}, overlap: {target_overlap}')
+        # Merge into existing target tokens
         target_tokens = np.hstack([target_tokens, new_target_tokens])
-    
+        print(f'{idx}: Overall target shape is now: {target_tokens.shape}')
+
+        print('\n')
+
+        if end_idx > source_tokens.shape[-1]:
+            break
+
+        # if idx == 0 and prompt_dict:
+        #     idx = end_idx
+        # else:
+        idx += source_stride
+
     target_tokens = target_tokens - cfg.OFFSET[target]
-    return target_tokens
+    return target_tokens, all_source_toks, all_gen_toks
 
 class AudioSemantic:
     def __init__(self, size='125m'):
@@ -113,58 +151,49 @@ class AudioSemantic:
         snapshot_download(f'cmeraki/tts_en_xl_{size}', local_dir=model_dir)
 
         self.text_semantic_model = load_model(path=f'{model_dir}/text_semantic/gpt_last.pt')
+        # self.text_semantic_model = load_model(path=)
         self.semantic_acoustic_model = load_model(path=f'{model_dir}/semantic_acoustic/gpt_last.pt')
-        self.text_tokenizer = get_tokenizer(TEXT, device='cpu')
-        self.acoustic_tokenizer = get_tokenizer(ACOUSTIC, device='cpu')
-        self.semantic_tokenizer = get_tokenizer(SEMANTIC, device=device)
+        self.text_tokenizer = get_tokenizer(TEXT, device=device)
+        self.acoustic_tokenizer = get_tokenizer(ACOUSTIC, device=device)
 
-    def text_to_semantic(self, text):
-        text_tokens = np.asarray(self.text_tokenizer.encode(text))
-        semantic_tokens = generate(model=self.text_semantic_model,
-                                   source_tokens=text_tokens,
-                                   source=TEXT,
-                                   target=SEMANTIC)
-        return semantic_tokens
-
-    def text_to_semantic_long(self, text):
+    def text_to_semantic_long(self, text, temperature=0.4, prompt_dict: dict = None):
         """
         Convert text to semantic tokens
         Split text by <period> and tokenize each sentence
         Generate semantic tokens for each sentence
         Return concatenated semantic tokens
         """
-        text = preprocess_text(text)
+        text = normalize_text(text)
         # Split text by <period> and tokenize each sentence
         sentences = text.split('<period>')
 
         semantic_tokens = []
         for sentence in sentences:
-            sentence_tokens = np.asarray(self.text_tokenizer.encode(sentence))
+            sentence_tokens = np.asarray(self.text_tokenizer.encode(sentence + ' <period>'))
             semantic_tokens.extend(
-                generate(
+                generate_long(
                     model=self.text_semantic_model,
-                    source_tokens=sentence_tokens,
                     source=TEXT,
-                    target=SEMANTIC
+                    target=SEMANTIC,
+                    source_tokens=sentence_tokens,
+                    device=device,
+                    temperature=temperature,
+                    prompt_dict=prompt_dict
                 )
             )
 
         return np.array(semantic_tokens)
 
-    def semantic_to_audio(self, tokens):
-        acoustic_tokens = generate(model=self.semantic_acoustic_model,
-                                   source_tokens=tokens,
-                                   source=SEMANTIC,
-                                   target=ACOUSTIC)
-
-        wav = self.acoustic_tokenizer.decode(torch.tensor(acoustic_tokens))
-        return wav
-
-    def semantic_to_audio_long(self, tokens):
-        acoustic_tokens = generate_long(model=self.semantic_acoustic_model, 
-                                source_tokens=tokens,
-                                source=SEMANTIC,
-                                target=ACOUSTIC)
+    def semantic_to_audio_long(self, tokens, temperature=0.4, prompt_dict: dict = None):
+        acoustic_tokens = generate_long(
+            model=self.semantic_acoustic_model,
+            source=SEMANTIC,
+            target=ACOUSTIC,
+            source_tokens=tokens,
+            device=device,
+            temperature=temperature,
+            prompt_dict=prompt_dict
+        )
 
         wav = self.acoustic_tokenizer.decode(torch.tensor(acoustic_tokens))
         return wav
@@ -183,6 +212,7 @@ def normalize_text(text):
     text = text.replace(".", " <period>")
     text = text.replace("\n"," ")
     return text
+
 
 if __name__ == "__main__":
     from argparse import ArgumentParser
