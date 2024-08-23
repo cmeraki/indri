@@ -28,59 +28,81 @@ HUMAN = 'human'
 ASSISTANT = 'bot'
 ID = 'id'
 
+
 def load_all_datasets():
     ds = ['Isotonic/human_assistant_conversation_deduped',
-          'hakurei/open-instruct-v1', 
-          'SohamGhadge/casual-conversation', 
-          'goendalf666/sales-conversations', 
+          'hakurei/open-instruct-v1',
+          'SohamGhadge/casual-conversation',
+          'goendalf666/sales-conversations',
           'jihyoung/ConversationChronicles',
           'talkmap/telecom-conversation-corpus',
           'talkmap/banking-conversation-corpus']
-    
+
     for d in ds:
         dataset = load_dataset(d)
-    
+
+
 def iter_open_instruct():
     dataset = load_dataset('hakurei/open-instruct-v1')
-    # ~500k rows 
+    # ~500k rows
     # dict_keys(['output', 'input', 'instruction'])
     # samples with input require extra cleanup
     for idx, elem in enumerate(dataset['train']):
         sample = {}
         if elem['input']:
-            continue 
+            continue
 
         sample[HUMAN] = normalize_text(elem['instruction'].lower())
         sample[ASSISTANT] = normalize_text(elem['output'].lower())
         sample[ID] = f'open_instruct_{idx}'
         yield sample
 
+
 def iter_human_assistant():
     dataset = load_dataset('Isotonic/human_assistant_conversation_deduped')
-    # ~500k rows 
+    # ~500k rows
     # dict_keys(['output', 'input', 'instruction'])
     # samples with input require extra cleanup
     for idx, elem in enumerate(dataset['train']):
         sample = {}
         sample[HUMAN] = normalize_text(elem['prompt'].lower().replace('human: ', '').replace('assistant:', '').strip())
-        sample[ASSISTANT] = normalize_text(elem['response'].lower().replace('human: ', '').replace('assistant:', '').strip())
+        sample[ASSISTANT] = normalize_text(
+            elem['response'].lower().replace('human: ', '').replace('assistant:', '').strip())
         sample[ID] = f'human_assistant_{idx}'
         yield sample
+
+
+import re
+
+
+def split_on_period(text):
+    pattern = r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s'
+    return re.split(pattern, text)
+
+
+def iter_tiny_stories():
+    dataset = load_dataset('roneneldan/TinyStories')
+    for idx, elem in enumerate(dataset['validation']):
+        if idx > 10:
+            break
+        yield elem
+
 
 def to_text_tokens(text, tokenizer):
     tokens = np.asarray(tokenizer.text_tokenizer.encode(text))
     tokens = tokens + cfg.OFFSET[TEXT]
-    tokens = np.hstack([cfg.INFER_TOKEN[TEXT], 
-                        tokens, 
+    tokens = np.hstack([cfg.INFER_TOKEN[TEXT],
+                        tokens,
                         cfg.STOP_TOKEN[TEXT]])
-    return tokens 
+    return tokens
+
 
 def to_semantic_tokens(text, tokenizer):
     tokens = tokenizer.text_to_semantic(text)
     tokens = tokens + cfg.OFFSET[SEMANTIC]
-    tokens = np.hstack([cfg.INFER_TOKEN[SEMANTIC], 
-                            tokens, 
-                            cfg.STOP_TOKEN[SEMANTIC]])
+    tokens = np.hstack([cfg.INFER_TOKEN[SEMANTIC],
+                        tokens,
+                        cfg.STOP_TOKEN[SEMANTIC]])
     return tokens
 
 
@@ -90,8 +112,38 @@ def normalize_text(text):
     text = text.replace(".", " <period>")
     text = text.replace('?', ' <questionmark>')
     text = text.replace("!", '<exclamationpoint>')
-    text = text.replace("\n"," ")
+    text = text.replace("\n", " ")
     return text
+
+
+def split_into_sentences(text):
+    allsplits = []
+    for split in text.split('\n'):
+        moresplits = split_on_period(split)
+        allsplits.extend(moresplits)
+
+    allsplits_sent = []
+    for split in allsplits:
+        if split:
+            split = split.strip() + "."
+            split = split.lower()
+            allsplits_sent.append(split)
+
+    return allsplits_sent
+
+
+def make_stories_dataset():
+    from tts.infer import AudioSemantic
+    tokenizer = AudioSemantic(size='125m')
+    output_dir = f'{cache_dir}/tinystories_omni/'
+    Path(output_dir).mkdir(exist_ok=True, parents=True)
+
+    for sample in tqdm(iter_tiny_stories(), 'preparing samples:'):
+        text = sample['text']
+        sentences = split_into_sentences(text)
+        text_tokens = [tokenizer.text_tokenizer.encode(s) for s in sentences]
+        audio_tokens = [tokenizer.text_to_semantic(s) for s in sentences]
+        print(audio_tokens)
 
 
 # last run at 37117/285460
@@ -111,9 +163,9 @@ def instruct_to_semantic():
     n_tokens = 0
     datasets = [iter_human_assistant, iter_open_instruct]
     samples = []
-    
+
     code_symbols = r'[{}#$%^&*+=]'
-    digits =  r'\d'
+    digits = r'\d'
     seen = {}
     for ds in datasets:
         for sample in tqdm(ds(), 'preparing samples:'):
@@ -126,22 +178,22 @@ def instruct_to_semantic():
                                 seen[x] = 1
                                 if (len(tokenizer.text_tokenizer.encode(sample[HUMAN])) < 100):
                                     samples.append(sample)
-    
+
     print(len(samples))
-    samples = sorted(samples, key=lambda x:len(x[HUMAN]) + len(x[ASSISTANT]))
+    samples = sorted(samples, key=lambda x: len(x[HUMAN]) + len(x[ASSISTANT]))
     # n_tokens = 0
     for sample in samples[:10]:
         print(sample)
-    
+
     for sample in tqdm(samples):
         human = sample[HUMAN]
         assistant = sample[ASSISTANT]
         id = sample[ID]
-        
-        human_tokens = [to_text_tokens(human, tokenizer),   
+
+        human_tokens = [to_text_tokens(human, tokenizer),
                         to_semantic_tokens(human, tokenizer)]
-        
-        assistant_tokens = [to_text_tokens(assistant, tokenizer), 
+
+        assistant_tokens = [to_text_tokens(assistant, tokenizer),
                             to_semantic_tokens(assistant, tokenizer)]
 
         sid = 0
@@ -153,8 +205,10 @@ def instruct_to_semantic():
                 opath = output_dir + f'{id}_{sid}.npy'
                 np.save(opath, alltokens)
                 sid += 1
-    
+
     print(good, total, n_tokens)
 
+
 if __name__ == '__main__':
-     instruct_to_semantic()
+    # instruct_to_semantic()
+    make_stories_dataset()
