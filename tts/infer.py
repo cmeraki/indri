@@ -66,9 +66,8 @@ def generate(model, source, target, source_tokens, max_length, max_source_tokens
 
 class AudioSemantic:
     def __init__(self, size='125m'):
-        # model_dir = f'{cache_dir}/models/tts_en_xl_{size}/'
-        model_dir = '/home/apurva/projects/indri/tts_xl_30k_long_125m_en/'
-        # snapshot_download(f'cmeraki/tts_en_xl_{size}', local_dir=model_dir)
+        model_dir = f'{cache_dir}/models/tts_xl_30k_long_125m_en/'
+        snapshot_download(f'cmeraki/tts_xl_30k_long_125m_en', local_dir=model_dir)
         
         self.text_semantic_model = convert_to_hf(path=f'{model_dir}/text_semantic/gpt_last.pt', device=device)
         self.text_semantic_model.generation_config.eos_token_id = cfg.STOP_TOKEN[SEMANTIC]
