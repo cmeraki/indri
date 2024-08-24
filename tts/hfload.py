@@ -43,6 +43,9 @@ def convert_to_hf(path, device: str = 'cpu'):
     model = GPT2LMHeadModel(config)
     model.to(device)
     model.load_state_dict(clean_custom_gpt, strict=False)
+    model.eval()
+
+    model = torch.compile(model)
 
     return model
 

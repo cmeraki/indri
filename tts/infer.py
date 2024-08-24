@@ -16,6 +16,7 @@ from common import Config as cfg
 from tts.utils import read_audio_file
 from tts.hfload import convert_to_hf
 from transformers import StoppingCriteria
+import time
 
 
 class StoppingCriteriaSub(StoppingCriteria):
@@ -97,8 +98,14 @@ class AudioSemantic:
     def pad_jagged_array(jagged_array, target_length, pad_value=0):
         return [np.pad(row, (0, target_length - len(row)), constant_values=pad_value) for row in jagged_array]
 
-    def text_to_semantic_batch(self, texts):
-        text_tokens = [np.asarray(self.text_tokenizer.encode(text)[0: 256]) + cfg.OFFSET[TEXT] for text in texts]
+    @torch.inference_mode()
+    def text_to_semantic_batch(self, texts=None, text_tokens=None):
+        assert (texts is not None) or (text_tokens is not None)
+        
+        if text_tokens is None:
+            text_tokens = [self.text_tokenizer.encode(text) for text in texts]
+        
+        text_tokens = [np.asarray(toks)[0:256] + cfg.OFFSET[TEXT] for toks in text_tokens]
         text_tokens = [np.hstack([tok, cfg.INFER_TOKEN[SEMANTIC]]) for tok in text_tokens]
         lens = [len(x) for x in text_tokens]
         maxlen = max(lens)
@@ -111,6 +118,9 @@ class AudioSemantic:
         for i, l in enumerate(lens):
             attn_mask[i][maxlen - l:] = 1
 
+        usage = attn_mask.sum() / (attn_mask.shape[0] * attn_mask.shape[1])
+        # print('usage', usage, 'n_tokens', attn_mask.sum())
+
         attn_mask = torch.tensor(attn_mask)
         attn_mask = attn_mask.to(device)
 
@@ -118,6 +128,7 @@ class AudioSemantic:
         padded_text_tokens = padded_text_tokens.to(device)
 
         with ctx:
+            # print('gen start', time.time())
             target_tokens = self.text_semantic_model.generate(padded_text_tokens,
                                                               max_length=1024,
                                                               temperature=0.99,
@@ -125,10 +136,11 @@ class AudioSemantic:
                                                               do_sample=True,
                                                               attention_mask=attn_mask
                                                               )
-
+            # print('gen end', time.time())
             target_tokens = target_tokens.detach().cpu().numpy()
-
+            
         target_tokens = [extract_new_tokens(tok, target=SEMANTIC) - cfg.OFFSET[SEMANTIC] for tok in target_tokens]
+        # print('out tokens', sum([len(s) for s in target_tokens]))
         return target_tokens
 
     def semantic_to_audio(self, tokens):

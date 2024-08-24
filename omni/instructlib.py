@@ -6,6 +6,7 @@ import numpy as np
 from tqdm import tqdm
 import re
 from pathlib import Path
+import time
 
 # tts datasets (audio-semantic)
 # <text> how do i say this : 'text' </text> <assistant> semantic_tokens </assitant>
@@ -28,53 +29,6 @@ HUMAN = 'human'
 ASSISTANT = 'bot'
 ID = 'id'
 
-
-def load_all_datasets():
-    ds = ['Isotonic/human_assistant_conversation_deduped',
-          'hakurei/open-instruct-v1',
-          'SohamGhadge/casual-conversation',
-          'goendalf666/sales-conversations',
-          'jihyoung/ConversationChronicles',
-          'talkmap/telecom-conversation-corpus',
-          'talkmap/banking-conversation-corpus']
-
-    for d in ds:
-        dataset = load_dataset(d)
-
-
-def iter_open_instruct():
-    dataset = load_dataset('hakurei/open-instruct-v1')
-    # ~500k rows
-    # dict_keys(['output', 'input', 'instruction'])
-    # samples with input require extra cleanup
-    for idx, elem in enumerate(dataset['train']):
-        sample = {}
-        if elem['input']:
-            continue
-
-        sample[HUMAN] = normalize_text(elem['instruction'].lower())
-        sample[ASSISTANT] = normalize_text(elem['output'].lower())
-        sample[ID] = f'open_instruct_{idx}'
-        yield sample
-
-
-def iter_human_assistant():
-    dataset = load_dataset('Isotonic/human_assistant_conversation_deduped')
-    # ~500k rows
-    # dict_keys(['output', 'input', 'instruction'])
-    # samples with input require extra cleanup
-    for idx, elem in enumerate(dataset['train']):
-        sample = {}
-        sample[HUMAN] = normalize_text(elem['prompt'].lower().replace('human: ', '').replace('assistant:', '').strip())
-        sample[ASSISTANT] = normalize_text(
-            elem['response'].lower().replace('human: ', '').replace('assistant:', '').strip())
-        sample[ID] = f'human_assistant_{idx}'
-        yield sample
-
-
-import re
-
-
 def split_on_period(text):
     pattern = r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s'
     return re.split(pattern, text)
@@ -82,9 +36,7 @@ def split_on_period(text):
 
 def iter_tiny_stories():
     dataset = load_dataset('roneneldan/TinyStories')
-    for idx, elem in enumerate(dataset['validation']):
-        if idx > 10:
-            break
+    for idx, elem in enumerate(dataset['train']):
         yield elem
 
 
@@ -123,91 +75,90 @@ def split_into_sentences(text):
         allsplits.extend(moresplits)
 
     allsplits_sent = []
+    regex = re.compile('[^a-z ]')
     for split in allsplits:
         if split:
-            split = split.strip() + "."
+            split = split.strip()
+            split = split.replace('.', '')
+            split = split.replace('"', '')
             split = split.lower()
-            allsplits_sent.append(split)
+            split = regex.sub('', split)
+            if len(split) > 0:
+                allsplits_sent.append(split)
 
     return allsplits_sent
 
+def batch_list(input_list, batch_size=32):
+    return [input_list[i:i + batch_size] for i in range(0, len(input_list), batch_size)]
 
 def make_stories_dataset():
     from tts.infer import AudioSemantic
     tokenizer = AudioSemantic(size='125m')
-    output_dir = f'{cache_dir}/tinystories_omni/'
-    Path(output_dir).mkdir(exist_ok=True, parents=True)
+    output_dir = Path(f'{cache_dir}/tinystories_omni/')
+    output_dir.mkdir(exist_ok=True, parents=True)
+    
+    # total_tokens = 0
+    # for sample in tqdm(iter_tiny_stories(), 'preparing samples:'):
+    #     text = sample['text']
+    #     sentences = split_into_sentences(text)
+        
+    #     sentences = [tokenizer.text_tokenizer.encode(s) for s in sentences]
+    #     total_tokens += sum([len(s) for s in sentences])
+    
+    # print('total tokens', total_tokens)
+    import json
+    large_batch_size = 2560
+    batch_size = 128
+    
+    large_batch = []
+    story_mapping = []
+    stories_raw = {}
 
-    for sample in tqdm(iter_tiny_stories(), 'preparing samples:'):
+    for story_index, sample in tqdm(enumerate(iter_tiny_stories()), 'preparing samples:'):        
         text = sample['text']
         sentences = split_into_sentences(text)
-        text_tokens = [tokenizer.text_tokenizer.encode(s) for s in sentences]
-        audio_tokens = [tokenizer.text_to_semantic(s) for s in sentences]
-        print(audio_tokens)
+        stories_raw[story_index] = sentences
+        
+        sentences = [tokenizer.text_tokenizer.encode(s) for s in sentences]
+        large_batch.extend(sentences)
+        story_mapping.extend([story_index]*len(sentences))
 
+        if len(large_batch) >= large_batch_size:
+            large_batch = list(enumerate(large_batch))
+            sorted_batch = sorted(large_batch, key=lambda x:len(x[1]))
+            batches = batch_list(sorted_batch, batch_size=batch_size)
+            results = []
+            for batch in batches:
+                token_batch = [i[1] for i in batch]
+                idx_batch = [i[0] for i in batch]
+                audio_tokens = tokenizer.text_to_semantic_batch(text_tokens=token_batch)
+                audio_tokens = [i.tolist() for i in audio_tokens]
+                # audio_tokens = token_batch
+                batch_results = list(zip(idx_batch, audio_tokens))
+                results.extend(batch_results)
+            
+            sorted_results = sorted(results, key=lambda x:x[0], reverse=False)
+            
+            stories_text = {}
+            stories_audio = {}
+            for residx, idx in enumerate(story_mapping):
+                stories_text[idx] = stories_text.get(idx, [])
+                stories_text[idx].append(large_batch[residx][1])
 
-# last run at 37117/285460
-def instruct_to_semantic():
-    # add kv caching to gpt to make this faster
-    from tts.infer import AudioSemantic
-    tokenizer = AudioSemantic(size='125m')
-    human_token = tokenizer.text_tokenizer.encode(HUMAN)
-    assistant_token = tokenizer.text_tokenizer.encode(ASSISTANT)
-    print('human_token', human_token, 'assistant_token', assistant_token)
-    output_dir = f'{cache_dir}/instruct_tokens/'
-    Path(output_dir).mkdir(exist_ok=True, parents=True)
-    arr = []
+                stories_audio[idx] = stories_audio.get(idx, [])
+                stories_audio[idx].append(sorted_results[residx][1])
+            
+            for key in stories_text:
+                fd = {TEXT: stories_text[key],
+                      SEMANTIC: stories_audio[key],
+                      'raw': stories_raw[key]}
+                
+                fdj = json.dumps(fd)
+                with open(output_dir / f'{key}.json', 'w') as writer:
+                    writer.write(fdj)
 
-    total = 0
-    good = 0
-    n_tokens = 0
-    datasets = [iter_human_assistant, iter_open_instruct]
-    samples = []
-
-    code_symbols = r'[{}#$%^&*+=]'
-    digits = r'\d'
-    seen = {}
-    for ds in datasets:
-        for sample in tqdm(ds(), 'preparing samples:'):
-            if sample[HUMAN] and sample[ASSISTANT]:
-                if (len(sample[HUMAN].split()) > 1) and (len(sample[ASSISTANT].split()) > 1):
-                    if not bool(re.search(code_symbols, sample[HUMAN] + sample[ASSISTANT])):
-                        if not bool(re.search(digits, sample[HUMAN] + sample[ASSISTANT])):
-                            x = sample[HUMAN] + sample[ASSISTANT]
-                            if x not in seen:
-                                seen[x] = 1
-                                if (len(tokenizer.text_tokenizer.encode(sample[HUMAN])) < 100):
-                                    samples.append(sample)
-
-    print(len(samples))
-    samples = sorted(samples, key=lambda x: len(x[HUMAN]) + len(x[ASSISTANT]))
-    # n_tokens = 0
-    for sample in samples[:10]:
-        print(sample)
-
-    for sample in tqdm(samples):
-        human = sample[HUMAN]
-        assistant = sample[ASSISTANT]
-        id = sample[ID]
-
-        human_tokens = [to_text_tokens(human, tokenizer),
-                        to_semantic_tokens(human, tokenizer)]
-
-        assistant_tokens = [to_text_tokens(assistant, tokenizer),
-                            to_semantic_tokens(assistant, tokenizer)]
-
-        sid = 0
-        for i in human_tokens:
-            for j in assistant_tokens:
-                alltokens = np.hstack([human_token, i, assistant_token, j])
-                alltokens = alltokens.astype(dtype=np.uint16)
-                # print(alltokens)
-                opath = output_dir + f'{id}_{sid}.npy'
-                np.save(opath, alltokens)
-                sid += 1
-
-    print(good, total, n_tokens)
-
+            large_batch = []
+            story_mapping = []
 
 if __name__ == '__main__':
     # instruct_to_semantic()
