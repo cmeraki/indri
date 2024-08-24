@@ -304,7 +304,7 @@ class GPT(nn.Module):
 def get_model(n_layer=12,
               n_head=12,
               n_embd=768,
-              vocab_size=3072,
+              vocab_size=53376,
               dropout=0.0,
               block_size=1024,
               bias=False,
@@ -341,6 +341,6 @@ def get_model(n_layer=12,
     model.to(device)
     if compile:
         print("compiling the model... (takes a ~minute)")
-        model = torch.compile(model)
+        torch.compile(model)
 
     return model

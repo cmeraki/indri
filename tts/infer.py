@@ -120,7 +120,7 @@ class AudioSemantic:
 
         usage = attn_mask.sum() / (attn_mask.shape[0] * attn_mask.shape[1])
         # print('usage', usage, 'n_tokens', attn_mask.sum())
-
+        
         attn_mask = torch.tensor(attn_mask)
         attn_mask = attn_mask.to(device)
 

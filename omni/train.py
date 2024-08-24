@@ -9,8 +9,19 @@ from tts.gpt2_trainer import train as gpt_train
 from tts.gpt2_model import get_model, GPT
 from common import DEVICE
 from common import Config as cfg
+import json
+from common import TEXT, SEMANTIC
 
 print(cfg.__dict__)
+
+def decorate(tokens, type):
+    tokens = tokens + cfg.OFFSET[type]
+    tokens = np.hstack([cfg.INFER_TOKEN[type],
+                        tokens,
+                        cfg.STOP_TOKEN[type]])
+    return tokens
+
+
 
 class DataLoader:
     def __init__(self, data_dir):
@@ -18,7 +29,7 @@ class DataLoader:
         self.files = self.load_files(self.data_dir)
 
     def load_files(self, data_dir):
-        files = glob.glob(f'{data_dir}/*.npy')
+        files = glob.glob(f'{data_dir}/*.json')
         
         files = list(files)
 
@@ -30,6 +41,24 @@ class DataLoader:
         }
 
         return files
+
+    def get_tokens(self, filename):
+        data = json.load(open(filename))
+        size = len(data[TEXT])
+        modalities = [TEXT, SEMANTIC]
+        choices = [random.randint(0, 1) for _ in range(size)]
+        
+        output = []
+        for idx in range(size):
+            choice = choices[idx]
+            modality = modalities[choice]
+            tokens = np.asarray(data[modality][idx])
+            tokens = decorate(tokens, modality)
+            output.extend(tokens)
+        
+        output = np.hstack(output)
+        # print(output)
+        return output
 
     def load_batch(self, split, block_size, batch_size):
         some_filenames = random.sample(self.files[split], batch_size)
@@ -43,9 +72,11 @@ class DataLoader:
         y = y + cfg.OMNI_STOP_TOKEN
 
         for i in range(batch_size):
-            tokens = np.load(some_filenames[i])
-            _x = tokens[:block_size]
-            _y = tokens[1:block_size + 1]
+            tokens = self.get_tokens(some_filenames[i])
+            index = random.randint(0, max(len(tokens) - block_size, 0))
+            
+            _x = tokens[index:block_size]
+            _y = tokens[index + 1:block_size + 1]
             
             x[i][:len(_x)] = _x
             y[i][:len(_y)] = _y
@@ -53,7 +84,9 @@ class DataLoader:
         return x, y
 
     def get_batch(self, split, device, block_size, batch_size):
-        x, y = self.load_batch(split, block_size=block_size, batch_size=batch_size)
+        x, y = self.load_batch(split, 
+                               block_size=block_size,
+                               batch_size=batch_size)
 
         x = torch.from_numpy(x)
         y = torch.from_numpy(y)
@@ -73,9 +106,6 @@ def train_omni(data_dir, out_dir, pretrained=None):
     model.expand_vocab(new_vocab_size=vocab_size)
     model.to(DEVICE)
 
-    print("compiling the model... (takes a ~minute)")
-    model = torch.compile(model)
-
     print(model)
 
     print("Vocab size", vocab_size)
@@ -91,8 +121,8 @@ def train_omni(data_dir, out_dir, pretrained=None):
               steps=6000,
               block_size=1024,
               eval_interval=100,
-              batch_size=32,
-              grad_accum_steps=2,
+              batch_size=16,
+              grad_accum_steps=4,
               device=DEVICE)
 
     return out_dir
@@ -125,7 +155,7 @@ def train():
     # download_dataset(data_dir)
     out_dir = Path(f'{cache_dir}/data/models/omni/')
     
-    data_dir = f'{cache_dir}/omni/instruct_tokens/'
+    data_dir = f'{cache_dir}/tinystories_omni/'
     train_omni(data_dir, out_dir, pretrained='cmeraki/gpt2-124M-400B')
     
     # data_dir = f'{cache_dir}/omni/instruct_tokens/'

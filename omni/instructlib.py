@@ -36,8 +36,9 @@ def split_on_period(text):
 
 def iter_tiny_stories():
     dataset = load_dataset('roneneldan/TinyStories')
-    for idx, elem in enumerate(dataset['train']):
-        yield elem
+    elems = [(idx, elem) for (idx,elem) in tqdm(enumerate(dataset['train']), desc='loading in mem..')]
+    for idx, elem in elems:
+        yield idx, elem
 
 
 def to_text_tokens(text, tokenizer):
@@ -93,28 +94,20 @@ def batch_list(input_list, batch_size=32):
 
 def make_stories_dataset():
     from tts.infer import AudioSemantic
+    import json
+    
     tokenizer = AudioSemantic(size='125m')
     output_dir = Path(f'{cache_dir}/tinystories_omni/')
     output_dir.mkdir(exist_ok=True, parents=True)
     
-    # total_tokens = 0
-    # for sample in tqdm(iter_tiny_stories(), 'preparing samples:'):
-    #     text = sample['text']
-    #     sentences = split_into_sentences(text)
-        
-    #     sentences = [tokenizer.text_tokenizer.encode(s) for s in sentences]
-    #     total_tokens += sum([len(s) for s in sentences])
-    
-    # print('total tokens', total_tokens)
-    import json
     large_batch_size = 2560
-    batch_size = 128
+    batch_size = 256
     
     large_batch = []
     story_mapping = []
     stories_raw = {}
 
-    for story_index, sample in tqdm(enumerate(iter_tiny_stories()), 'preparing samples:'):        
+    for story_index, sample in tqdm(iter_tiny_stories(), 'preparing samples:'):
         text = sample['text']
         sentences = split_into_sentences(text)
         stories_raw[story_index] = sentences
