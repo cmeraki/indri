@@ -1,3 +1,4 @@
+import re
 import math
 import torch
 import numpy as np
@@ -10,7 +11,6 @@ from common import Config as cfg
 from common import SEMANTIC, TEXT, ACOUSTIC, device, ctx
 from datalib.tokenlib import get_tokenizer
 from tts.gpt2_model import get_model
-from tts.train import DataLoader
 from tts.utils import read_audio_file
 
 def load_model(path):
@@ -41,12 +41,15 @@ def generate_long(
         target,
         source_tokens,
         device,
-        max_source_tokens=cfg.max_source_tokens//2,
-        source_overlap=64,
-        temperature=0.4,
-        top_k=100,
-        prompt_dict: dict = None,
+        **generate_kwargs
     ):
+ 
+    prompt_dict = generate_kwargs.get("prompt_dict")
+    temperature = generate_kwargs.get("temperature", 0.9)
+    top_k = generate_kwargs.get("top_k", 100)
+    max_source_tokens = generate_kwargs.get("max_source_tokens", 256)
+    source_overlap = generate_kwargs.get("source_overlap", 128)
+    max_new_tokens = generate_kwargs.get("max_new_tokens", 3072)
 
     all_source_toks = []
     all_gen_toks = []
@@ -102,7 +105,7 @@ def generate_long(
             with ctx:
                 new_target_tokens = model.generate(
                     input_tokens,
-                    1024,
+                    max_new_tokens=max_new_tokens,
                     temperature=temperature,
                     top_k=top_k,
                     stop_token=cfg.STOP_TOKEN[target]
@@ -114,6 +117,11 @@ def generate_long(
 
         all_source_toks.append(input_tokens)
         all_gen_toks.append(new_target_tokens)
+
+        # There are a few checks that we run to make sure the generation is correct
+        # 1. The generated tokens are even
+        # 2. The generated tokens are from the correct codebook
+        # 3. The generated tokens are not too long
 
         if target == ACOUSTIC and new_target_tokens.shape[-1] % 2 != 0:
             print(f'Target tokens shape: {new_target_tokens.shape} is not even')
@@ -147,52 +155,51 @@ def generate_long(
 
 class AudioSemantic:
     def __init__(self, size='125m'):
-        model_dir = f'{cache_dir}/models/tts_en_xl_{size}/'
-        snapshot_download(f'cmeraki/tts_en_xl_{size}', local_dir=model_dir)
+        # snapshot_download(f'cmeraki/tts_xl_30k_long_125m_en', local_dir=model_dir)
+        # snapshot_download(f'cmeraki/tts_en_xl_{size}', local_dir=model_dir)
 
+        model_dir = f'{cache_dir}/models/tts_xl_30k_long_125m_en/'
         self.text_semantic_model = load_model(path=f'{model_dir}/text_semantic/gpt_last.pt')
-        # self.text_semantic_model = load_model(path=)
+
+        model_dir = f'{cache_dir}/models/tts_en_xl_{size}/'
         self.semantic_acoustic_model = load_model(path=f'{model_dir}/semantic_acoustic/gpt_last.pt')
+
         self.text_tokenizer = get_tokenizer(TEXT, device=device)
         self.acoustic_tokenizer = get_tokenizer(ACOUSTIC, device=device)
 
-    def text_to_semantic_long(self, text, temperature=0.4, prompt_dict: dict = None):
+    def text_to_semantic_long(self, text, **generate_kwargs):
         """
         Convert text to semantic tokens
         Split text by <period> and tokenize each sentence
         Generate semantic tokens for each sentence
         Return concatenated semantic tokens
         """
-        text = normalize_text(text)
-        # Split text by <period> and tokenize each sentence
-        sentences = text.split('<period>')
+        text = normalize_text(text).split(" <period>")[:-1]
+        sentences = [(r + " <period>").strip() for r in text]
 
         semantic_tokens = []
         for sentence in sentences:
-            sentence_tokens = np.asarray(self.text_tokenizer.encode(sentence + ' <period>'))
-            semantic_tokens.extend(
-                generate_long(
-                    model=self.text_semantic_model,
-                    source=TEXT,
-                    target=SEMANTIC,
-                    source_tokens=sentence_tokens,
-                    device=device,
-                    temperature=temperature,
-                    prompt_dict=prompt_dict
-                )
+            sem_toks, _, _ = generate_long(
+                model=self.text_semantic_model,
+                source=TEXT,
+                target=SEMANTIC,
+                source_tokens=np.array(self.text_tokenizer.encode(sentence)),
+                device=device,
+                **generate_kwargs
             )
+            semantic_tokens.extend(sem_toks)
 
-        return np.array(semantic_tokens)
+        return np.array(semantic_tokens).astype(np.int64)
 
-    def semantic_to_audio_long(self, tokens, temperature=0.4, prompt_dict: dict = None):
+
+    def semantic_to_audio_long(self, tokens, **generate_kwargs):
         acoustic_tokens = generate_long(
             model=self.semantic_acoustic_model,
             source=SEMANTIC,
             target=ACOUSTIC,
             source_tokens=tokens,
             device=device,
-            temperature=temperature,
-            prompt_dict=prompt_dict
+            **generate_kwargs
         )
 
         wav = self.acoustic_tokenizer.decode(torch.tensor(acoustic_tokens))
@@ -208,10 +215,13 @@ class AudioSemantic:
 
 def normalize_text(text):
     text = text.lower()
-    text = text.replace(",", " <comma>")
-    text = text.replace(".", " <period>")
-    text = text.replace("\n"," ")
-    return text
+    text = re.sub(r'[^\w\s.,]', '', text)
+
+    text = text.replace('.', ' <period>')
+    text = text.replace(',', ' <comma>')
+    text = text.replace('\n', ' ')
+
+    return text.strip()
 
 
 if __name__ == "__main__":

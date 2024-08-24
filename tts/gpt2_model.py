@@ -324,11 +324,14 @@ def get_model(n_layer=12,
 
     if path:
         config = torch.load(path, map_location=device)['config']
-        model_args.update(config)
+        if type(config) == dict:
+            model_args.update(config)
+            gptconf = GPTConfig(**model_args)
+        else:
+            gptconf = config
     
-    print(model_args)
+    print(gptconf)
 
-    gptconf = GPTConfig(**model_args)
     model = GPT(gptconf)
     if path:
         state_dict = torch.load(path, map_location=device)['model']
@@ -338,8 +341,6 @@ def get_model(n_layer=12,
                 state_dict[k[len(unwanted_prefix):]] = state_dict.pop(k)
         model.load_state_dict(state_dict)
     
-    print(gptconf)
-
     model.to(device)
     if compile:
         print("compiling the model... (takes a ~minute)")
