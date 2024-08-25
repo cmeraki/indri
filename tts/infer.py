@@ -148,8 +148,8 @@ class AudioSemantic:
                                    source_tokens=tokens,
                                    source=SEMANTIC,
                                    target=ACOUSTIC,
-                                   max_length=1024,
-                                   max_source_tokens=256,
+                                   max_length=2048,
+                                   max_source_tokens=768,
                                    temperature=0.95,
                                    top_k=100)
 

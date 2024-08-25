@@ -21,14 +21,36 @@ def decorate(tokens, type):
                         cfg.STOP_TOKEN[type]])
     return tokens
 
+def replace_consecutive(arr):
+    mask = np.concatenate(([True], arr[1:] != arr[:-1]))
+    return arr[mask]
 
 
 class DataLoader:
-    def __init__(self, data_dir):
-        self.data_dir = data_dir
-        self.files = self.load_files(self.data_dir)
+    def __init__(self, interleaved_dir, speech_dir, text_dir):
+        self.interleaved_dir = interleaved_dir
+        self.speech_dir = speech_dir
+        self.text_dir = text_dir
 
-    def load_files(self, data_dir):
+        self.interleaved_files = self.load_interleaved(self.interleaved_dir)
+        self.speech_files = self.load_numpy(self.speech_dir)
+        self.text_files = self.load_numpy(self.text_dir)
+
+    def load_numpy(self, data_dir):
+        files = glob.glob(f'{data_dir}/*.npy')
+        
+        files = list(files)
+
+        print("Num files", len(files))
+
+        files = {
+            'train': files[1000:],
+            'val': files[:1000]
+        }
+
+        return files
+
+    def load_interleaved(self, data_dir):
         files = glob.glob(f'{data_dir}/*.json')
         
         files = list(files)
@@ -42,7 +64,8 @@ class DataLoader:
 
         return files
 
-    def get_tokens(self, filename):
+    def get_tokens_interleaved(self, split):
+        filename = random.choice(self.interleaved_files[split])
         data = json.load(open(filename))
         size = len(data[TEXT])
         modalities = [TEXT, SEMANTIC]
@@ -59,10 +82,23 @@ class DataLoader:
         output = np.hstack(output)
         # print(output)
         return output
+    
+    def get_tokens_text(self, split):
+        filename = random.choice(self.text_files[split])
+        tokens = np.load(filename)
+        tokens = decorate(tokens, TEXT)
+        return tokens
+    
+    def get_tokens_speech(self, split):
+        filename = random.choice(self.speech_files[split])
+        tokens = np.load(filename)
+        tokens = tokens.reshape(-1)
+        tokens = replace_consecutive(tokens)
+        tokens = decorate(tokens, SEMANTIC)
+        return tokens
+
 
     def load_batch(self, split, block_size, batch_size):
-        some_filenames = random.sample(self.files[split], batch_size)
-
         x = np.zeros(shape=(batch_size, block_size), dtype=np.int64)
         y = np.zeros(shape=(batch_size, block_size), dtype=np.int64)
 
@@ -70,14 +106,20 @@ class DataLoader:
         # so we don't have to pad later
         x = x + cfg.OMNI_STOP_TOKEN
         y = y + cfg.OMNI_STOP_TOKEN
+        methods = [self.get_tokens_interleaved, 
+                   self.get_tokens_speech, 
+                   self.get_tokens_text]
 
         for i in range(batch_size):
-            tokens = self.get_tokens(some_filenames[i])
+            method = random.choice(methods)
+            tokens = method(split)
             index = random.randint(0, max(len(tokens) - block_size, 0))
             
             _x = tokens[index:block_size]
             _y = tokens[index + 1:block_size + 1]
             
+            # print(method, _x.shape)
+
             x[i][:len(_x)] = _x
             y[i][:len(_y)] = _y
         
@@ -99,7 +141,18 @@ class DataLoader:
         return x, y
 
 
-def train_omni(data_dir, out_dir, pretrained=None):
+def train_omni():
+    from common import cache_dir
+    
+    
+    # download_dataset(data_dir)
+    out_dir = Path(f'{cache_dir}/data/models/omni_mixed/')
+    
+    interleaved_dir = f'{cache_dir}/tinystories_omni/'
+    speech_dir = f'{cache_dir}/peoples_speech/tokens/semantic/'
+    text_dir = f'{cache_dir}/peoples_speech/tokens/text/'
+
+    pretrained='cmeraki/gpt2-124M-400B' 
     vocab_size = cfg.VOCAB_SIZE
     
     model = GPT.from_pretrained(pretrained)
@@ -112,7 +165,9 @@ def train_omni(data_dir, out_dir, pretrained=None):
     print("Model outdir", out_dir)
     print("Training omni".upper())
     
-    data_generator = DataLoader(data_dir=data_dir)
+    data_generator = DataLoader(interleaved_dir=interleaved_dir, 
+                                speech_dir=speech_dir, 
+                                text_dir=text_dir)
 
 
     gpt_train(model,
@@ -151,19 +206,13 @@ def download_dataset(local_path):
 def train():
     from common import cache_dir
     
-    
-    # download_dataset(data_dir)
-    out_dir = Path(f'{cache_dir}/data/models/omni/')
-    
-    data_dir = f'{cache_dir}/tinystories_omni/'
-    train_omni(data_dir, out_dir, pretrained='cmeraki/gpt2-124M-400B')
-    
-    # data_dir = f'{cache_dir}/omni/instruct_tokens/'
-    # train_omni(data_dir, out_dir, pretrained=out_dir)
+    interleaved_dir = f'{cache_dir}/tinystories_omni/'
+    speech_dir = f'{cache_dir}/peoples_speech/tokens/semantic/'
+    text_dir = f'{cache_dir}/peoples_speech/tokens/text/'
 
-    # dl = DataLoader(data_dir)
-    # batch = dl.get_batch('train', DEVICE, 1024, 1)
-    # print(batch)
-
+    dl = DataLoader(interleaved_dir=interleaved_dir, speech_dir=speech_dir, text_dir=text_dir)
+    for i in range(10):
+        batch = dl.get_batch('train', DEVICE, 1024, 1)
+    
 if __name__ == '__main__':
-    train()
+    train_omni()

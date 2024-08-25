@@ -5,9 +5,12 @@ def convert_to_hf(path, device: str = 'cpu'):
     custom_gpt = torch.load(path, map_location=device)['model']
     clean_custom_gpt = {}
     unwanted_prefix = '_orig_mod.'
+    
     for k, _ in custom_gpt.items():
         if k.startswith(unwanted_prefix):
             clean_custom_gpt[k[len(unwanted_prefix):]] = custom_gpt[k]
+        else:
+            clean_custom_gpt[k] = custom_gpt[k]
 
     transposed = [
         'attn.c_attn.weight',
@@ -21,6 +24,7 @@ def convert_to_hf(path, device: str = 'cpu'):
             clean_custom_gpt[k] = clean_custom_gpt[k].t()
 
     custom_gpt_config = torch.load(path, map_location=device)['config']
+    print('loaded config', custom_gpt_config)
 
     model_args = dict(
         use_bias=False,
@@ -37,6 +41,7 @@ def convert_to_hf(path, device: str = 'cpu'):
     config.n_layer = custom_gpt_config.n_layer
     config.n_head = custom_gpt_config.n_head
     config.vocab_size = custom_gpt_config.vocab_size
+    config.vocab_size = 53376
     config.n_embd = custom_gpt_config.n_embd
     config.n_positions = custom_gpt_config.block_size
 

@@ -299,6 +299,8 @@ class GPT(nn.Module):
 
         self.lm_head = nn.Linear(self.config.n_embd, new_vocab_size, bias=False)
         self.lm_head.weight = self.transformer.wte.weight
+
+        self.config.vocab_size = new_vocab_size
     
 
 def get_model(n_layer=12,
