@@ -9,7 +9,7 @@ from transformers import HubertModel, Wav2Vec2FeatureExtractor, AutoTokenizer
 
 import joblib
 import bark
-from bark.generation import load_model
+from bark.generation import load_model as bark_load_model
 import torchaudio
 from pathlib import Path
 from tqdm import tqdm
@@ -118,7 +118,7 @@ class EncodecTokenizer:
             model = torch.compile(model)
 
         # Preload bark model
-        _ = load_model(
+        _ = bark_load_model(
             model_type="fine",
             use_gpu=True
         )
