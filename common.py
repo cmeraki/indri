@@ -17,6 +17,10 @@ torch.manual_seed(seed)
 torch.cuda.manual_seed(seed)
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
+rng_state = torch.random.get_rng_state()
+
+print(f'RNG state: {rng_state}')
+
 device = 'cuda:0'
 dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16'
 

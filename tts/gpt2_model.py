@@ -5,11 +5,12 @@ Modify nanogpt to model audio
 import math
 import inspect
 from dataclasses import dataclass
-import json
 
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
+
+from common import seed
 
 
 class LayerNorm(nn.Module):
@@ -253,6 +254,10 @@ class GPT(nn.Module):
         the sequence max_new_tokens times, feeding the predictions back into the model each time.
         Most likely you'll want to make sure to be in model.eval() mode of operation for this.
         """
+        # Reset the random state between generations
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed(seed)
+
         for _ in range(max_new_tokens):
             # if the sequence context is growing too long we must crop it at block_size
             idx_cond = idx if idx.size(1) <= self.config.block_size else idx[:, -self.config.block_size:]

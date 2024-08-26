@@ -43,7 +43,7 @@ def generate_long(
         device,
         **generate_kwargs
     ):
- 
+
     prompt_dict = generate_kwargs.get("prompt_dict")
     temperature = generate_kwargs.get("temperature", 0.9)
     top_k = generate_kwargs.get("top_k", 100)
@@ -73,8 +73,7 @@ def generate_long(
         f'Source tokens shape: {source_tokens.shape}, Overlap: {source_overlap}, stride: {source_stride}, max tokens: {max_source_tokens}\n'
     )
 
-    idx = 0
-    while idx < source_tokens.shape[-1]:
+    for idx in range(0, source_tokens.shape[-1], source_stride):
         end_idx = idx + max_source_tokens
         source_cut = source_tokens[idx: end_idx]
         target_cut = target_tokens[-target_overlap:]
@@ -98,7 +97,7 @@ def generate_long(
 
         input_tokens = torch.tensor(input_tokens, dtype=torch.long, device=device)[None, ...]
 
-        print(f'{idx}: Target cut shape: {target_cut.shape}, overlap: {target_overlap}')
+        # print(f'{idx}: Target cut shape: {target_cut.shape}, overlap: {target_overlap}')
         print(f'{idx}: Source tokens shape: {source_cut.shape}, {input_tokens.shape}, start idx: {idx}, end idx: {end_idx}')
 
         with torch.no_grad():
@@ -118,14 +117,13 @@ def generate_long(
         all_source_toks.append(input_tokens)
         all_gen_toks.append(new_target_tokens)
 
-        # There are a few checks that we run to make sure the generation is correct
-        # 1. The generated tokens are even
-        # 2. The generated tokens are from the correct codebook
-        # 3. The generated tokens are not too long
+        if target == ACOUSTIC:
+            assert (new_target_tokens[::2] - cfg.OFFSET[ACOUSTIC] > 1024).sum() == 0, 'Codebook 1 Acoustic tokens should be less than 1024'
+            assert (new_target_tokens[1::2] - cfg.OFFSET[ACOUSTIC] < 1024).sum() == 0, 'Codebook 2 Acoustic tokens should be less than 1024'
 
         if target == ACOUSTIC and new_target_tokens.shape[-1] % 2 != 0:
-            print(f'Target tokens shape: {new_target_tokens.shape} is not even')
-            return target_tokens, all_source_toks, all_gen_toks
+            print(f'{idx}: Target tokens shape is not even, truncating last token')
+            new_target_tokens = new_target_tokens[:-1]
 
         # Update the target overlap ratio, for x toks, we generate y toks
         num_source_new_toks = end_idx-idx
@@ -145,18 +143,13 @@ def generate_long(
         if end_idx > source_tokens.shape[-1]:
             break
 
-        # if idx == 0 and prompt_dict:
-        #     idx = end_idx
-        # else:
-        idx += source_stride
-
     target_tokens = target_tokens - cfg.OFFSET[target]
     return target_tokens, all_source_toks, all_gen_toks
 
 class AudioSemantic:
     def __init__(self, size='125m'):
-        # snapshot_download(f'cmeraki/tts_xl_30k_long_125m_en', local_dir=model_dir)
         # snapshot_download(f'cmeraki/tts_en_xl_{size}', local_dir=model_dir)
+        # snapshot_download(f'cmeraki/tts_xl_30k_long_125m_en', local_dir=model_dir)
 
         model_dir = f'{cache_dir}/models/tts_xl_30k_long_125m_en/'
         self.text_semantic_model = load_model(path=f'{model_dir}/text_semantic/gpt_last.pt')
@@ -177,6 +170,8 @@ class AudioSemantic:
         text = normalize_text(text).split(" <period>")[:-1]
         sentences = [(r + " <period>").strip() for r in text]
 
+        print(f'Sentences: {sentences}')
+
         semantic_tokens = []
         for sentence in sentences:
             sem_toks, _, _ = generate_long(
@@ -192,15 +187,24 @@ class AudioSemantic:
         return np.array(semantic_tokens).astype(np.int64)
 
 
-    def semantic_to_audio_long(self, tokens, **generate_kwargs):
-        acoustic_tokens = generate_long(
-            model=self.semantic_acoustic_model,
-            source=SEMANTIC,
-            target=ACOUSTIC,
-            source_tokens=tokens,
-            device=device,
-            **generate_kwargs
-        )
+    def semantic_to_audio_long(self, tokens, retries=5, **generate_kwargs):
+        for i in range(retries):
+            try:
+                acoustic_tokens, _, _ = generate_long(
+                    model=self.semantic_acoustic_model,
+                    source=SEMANTIC,
+                    target=ACOUSTIC,
+                    source_tokens=tokens,
+                    device=device,
+                    **generate_kwargs
+                )
+                break
+            except Exception as e:
+                print(f'Error: {e}, retrying {i+1} of {retries}')
+                continue
+
+        if i == retries - 1:
+            raise Exception('Failed to generate acoustic tokens')
 
         wav = self.acoustic_tokenizer.decode(torch.tensor(acoustic_tokens))
         return wav

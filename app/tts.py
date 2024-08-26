@@ -22,14 +22,14 @@ def load_prompt(speaker):
 
     global sa_prompt_toks_dict
     sa_prompt_toks_dict = {
-        'source_tokens': toks['semantic_tokens'],
-        'target_tokens': toks['acoustic_tokens']
+        'source_tokens': toks['SEMANTIC'],
+        'target_tokens': toks['ACOUSTIC']
     }
 
     global ts_prompt_toks_dict
     ts_prompt_toks_dict = {
-        'source_tokens': toks['text_tokens'],
-        'target_tokens': toks['semantic_tokens']
+        'source_tokens': toks['TEXT'],
+        'target_tokens': toks['SEMANTIC']
     }
 
 def echo(text, speaker):
@@ -43,6 +43,8 @@ def echo(text, speaker):
         load_prompt(speaker)
         prev_speaker = speaker
 
+    print(f'Generating semantic tokens {text}')
+
     sem_toks = ttslib.text_to_semantic_long(
         text,
         max_source_tokens=32,
@@ -51,10 +53,19 @@ def echo(text, speaker):
         max_new_tokens=1024,
         prompt_dict=ts_prompt_toks_dict
     )
-    print(sem_toks.shape)
+    print(f'Semantic tokens shape: {sem_toks.shape}')
 
-    aud = vanilla_ttslib.semantic_to_audio(sem_toks)
-    print(aud.shape)
+    print(f'Generating audio tokens {sem_toks.shape}')
+
+    aud = ttslib.semantic_to_audio_long(
+        sem_toks,
+        max_source_tokens=128,
+        source_overlap=64,
+        temperature=0.8,
+        max_new_tokens=1024,
+        prompt_dict=sa_prompt_toks_dict
+    )
+    print(f'Audio tokens shape: {aud.shape}')
 
     return 24_000, aud[0][0].cpu().numpy()
 
@@ -70,4 +81,4 @@ demo = gr.Interface(
 )
 
 if __name__ == "__main__":
-    demo.launch()
+    demo.launch(server_name="0.0.0.0", server_port=7860)
