@@ -8,7 +8,7 @@ from encodec.utils import save_audio
 
 from common import cache_dir
 from common import Config as cfg
-from common import SEMANTIC, TEXT, ACOUSTIC, device, ctx
+from common import SEMANTIC, TEXT, ACOUSTIC, device, ctx, seed
 from datalib.tokenlib import get_tokenizer
 from tts.gpt2_model import get_model
 from tts.utils import read_audio_file
@@ -99,6 +99,10 @@ def generate_long(
 
         # print(f'{idx}: Target cut shape: {target_cut.shape}, overlap: {target_overlap}')
         print(f'{idx}: Source tokens shape: {source_cut.shape}, {input_tokens.shape}, start idx: {idx}, end idx: {end_idx}')
+
+        # Reset the random state between generations
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed(seed)
 
         with torch.no_grad():
             with ctx:
