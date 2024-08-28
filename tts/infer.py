@@ -131,6 +131,10 @@ class AudioSemantic:
         padded_text_tokens = torch.tensor(padded_text_tokens)
         padded_text_tokens = padded_text_tokens.to(device)
 
+        # Reset the random state between generations
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed(seed)
+
         with ctx:
             # print('gen start', time.time())
             target_tokens = self.text_semantic_model.generate(padded_text_tokens,

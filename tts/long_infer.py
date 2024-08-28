@@ -211,7 +211,7 @@ class AudioSemantic:
             raise Exception('Failed to generate acoustic tokens')
 
         wav = self.acoustic_tokenizer.decode(torch.tensor(acoustic_tokens))
-        return wav
+        return wav.cpu()
 
 
     def audio_to_semantic(self, waveform=None, wav=None):
@@ -241,17 +241,13 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     
-    # this story has 500 semantic tokens
-    text = "There was a young boy in a village. He watched the sheep for the villagers. One day, he got bored. He shouted, wolf wolf. The villagers came running to help."
+    text = "There was a young boy in a village. He watched the sheep for the villagers."
 
-    text = normalize_text(text)
-    
     semlib = AudioSemantic(size=args.size)
-    for i in range(100):
-        semantic_tokens = semlib.text_to_semantic(text)
+    for i in range(10):
+        semantic_tokens = semlib.text_to_semantic_long(text)
 
-        
-        wav = semlib.semantic_to_audio(semantic_tokens)
+        wav = semlib.semantic_to_audio_long(semantic_tokens)
         print("=============")
         print("Writing output to", args.output)
         save_audio(wav=wav[0], path=f'test_{i}.wav', sample_rate=24000)
