@@ -7,7 +7,7 @@ from encodec.utils import save_audio
 
 from tts.gpt2_model import get_model
 from tts.train import DataLoader
-from common import SEMANTIC, TEXT, ACOUSTIC, device, ctx
+from common import SEMANTIC, TEXT, ACOUSTIC, device, ctx, seed
 from common import Config as cfg
 from datalib.tokenlib import get_tokenizer
 from common import cache_dir
@@ -49,6 +49,10 @@ def generate(model, source, target, source_tokens, max_length, max_source_tokens
     input_tokens = (torch.tensor(source_tokens,
                                  dtype=torch.long,
                                  device=device)[None, ...])
+
+    # Reset the random state between generations
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
 
     # print(input_tokens)
     with ctx:
@@ -126,6 +130,10 @@ class AudioSemantic:
 
         padded_text_tokens = torch.tensor(padded_text_tokens)
         padded_text_tokens = padded_text_tokens.to(device)
+
+        # Reset the random state between generations
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed(seed)
 
         with ctx:
             # print('gen start', time.time())

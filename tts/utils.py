@@ -1,6 +1,7 @@
-import torchaudio
 import os
 import torch
+import torchaudio
+import numpy as np
 
 
 def read_audio_file(fpath, sample_rate):
@@ -40,3 +41,7 @@ def find_audio_files(folder):
 
     return audio_files
 
+
+def replace_consecutive(arr):
+    mask = np.concatenate(([True], arr[1:] != arr[:-1]))
+    return arr[mask]

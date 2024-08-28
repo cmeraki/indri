@@ -5,7 +5,6 @@ Modify nanogpt to model audio
 import math
 import inspect
 from dataclasses import dataclass
-import json
 
 import torch
 import torch.nn as nn
@@ -253,6 +252,7 @@ class GPT(nn.Module):
         the sequence max_new_tokens times, feeding the predictions back into the model each time.
         Most likely you'll want to make sure to be in model.eval() mode of operation for this.
         """
+
         for _ in range(max_new_tokens):
             # if the sequence context is growing too long we must crop it at block_size
             idx_cond = idx if idx.size(1) <= self.config.block_size else idx[:, -self.config.block_size:]
@@ -323,23 +323,24 @@ def get_model(n_layer=12,
                       dropout=dropout)
 
     if path:
-        config = torch.load(path)['config']
-        model_args.update(config)
+        config = torch.load(path, map_location=device)['config']
+        if type(config) == dict:
+            model_args.update(config)
+            gptconf = GPTConfig(**model_args)
+        else:
+            gptconf = config
     
-    print(model_args)
+    print(gptconf)
 
-    gptconf = GPTConfig(**model_args)
     model = GPT(gptconf)
     if path:
-        state_dict = torch.load(path)['model']
+        state_dict = torch.load(path, map_location=device)['model']
         unwanted_prefix = '_orig_mod.'
         for k,v in list(state_dict.items()):
             if k.startswith(unwanted_prefix):
                 state_dict[k[len(unwanted_prefix):]] = state_dict.pop(k)
         model.load_state_dict(state_dict)
     
-    print(gptconf)
-
     model.to(device)
     if compile:
         print("compiling the model... (takes a ~minute)")

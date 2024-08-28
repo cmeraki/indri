@@ -9,6 +9,7 @@ from transformers import HubertModel, Wav2Vec2FeatureExtractor, AutoTokenizer
 
 import joblib
 import bark
+from bark.generation import load_model as bark_load_model
 import torchaudio
 from pathlib import Path
 from tqdm import tqdm
@@ -115,6 +116,13 @@ class EncodecTokenizer:
         model.to(device)
         if 'cuda' in device:
             model = torch.compile(model)
+
+        # Preload bark model
+        _ = bark_load_model(
+            model_type="fine",
+            use_gpu=True
+        )
+
         return model
 
     def encode(self, waveform):
@@ -145,12 +153,20 @@ class EncodecTokenizer:
         return acoustic_tokens
 
     def decode(self, tokens):
-        model = self.load_model(bandwidth=6, device=self.device)
         tokens = self.deserialize_tokens(tokens)
-        good_audio = bark.api.generate_fine(x_coarse_gen=tokens[0:2, :], silent=True)
+        print(f'decoding tokens shape: {tokens.shape}')
+
+        assert (isinstance(tokens, np.ndarray))
+        assert (len(tokens.shape) == 2)
+        assert (1 <= tokens.shape[0] <= 2)
+        assert (tokens.shape[1] > 0)
+        assert (tokens.min() >= 0)
+        assert (tokens.max() <= 1024 - 1)
+
+        good_audio = bark.api.generate_fine(x_coarse_gen=tokens, silent=False)
         good_audio = np.expand_dims(good_audio, axis=0)
-        good_audio = torch.from_numpy(good_audio)
-        wav = model.decode([(good_audio, None)])
+        good_audio = torch.from_numpy(good_audio).to(device=self.device)
+        wav = self.model.decode([(good_audio, None)])
         wav = wav.detach()
         return wav
 
@@ -219,5 +235,5 @@ if __name__ == '__main__':
     parser.add_argument('--type', type=str, required=True, help='Type of token semantic/acoustic')
 
     args = parser.parse_args()
-    from utils import iter_dataset
+    from .datalib import iter_dataset
     encode_files(iter_dataset(), outdir=args.outdir, type=args.type)
