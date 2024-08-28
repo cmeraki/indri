@@ -50,7 +50,7 @@ def generate(model, source, target, source_tokens):
         with ctx:
             target_tokens = model.generate(input_tokens,
                                 1024,
-                                temperature=0.4,
+                                temperature=0.8,
                                 top_k=100,
                                 stop_token=cfg.STOP_TOKEN[target])
             
@@ -88,7 +88,7 @@ def generate_long(model, source, target, source_tokens):
             with ctx:
                 new_target_tokens = model.generate(input_tokens,
                                     1024,
-                                    temperature=0.4,
+                                    temperature=0.8,
                                     top_k=100,
                                     stop_token=cfg.STOP_TOKEN[target])
                 
@@ -129,7 +129,7 @@ class AudioSemantic:
         return wav
 
     
-    def semantic_to_audio(self, tokens):
+    def semantic_to_audio_long(self, tokens):
         acoustic_tokens = generate_long(model=self.semantic_acoustic_model, 
                                 source_tokens=tokens,
                                 source=SEMANTIC,

@@ -323,7 +323,7 @@ def get_model(n_layer=12,
                       dropout=dropout)
 
     if path:
-        config = torch.load(path)['config']
+        config = torch.load(path, map_location=device)['config']
         model_args.update(config)
     
     print(model_args)
@@ -331,7 +331,7 @@ def get_model(n_layer=12,
     gptconf = GPTConfig(**model_args)
     model = GPT(gptconf)
     if path:
-        state_dict = torch.load(path)['model']
+        state_dict = torch.load(path, map_location=device)['model']
         unwanted_prefix = '_orig_mod.'
         for k,v in list(state_dict.items()):
             if k.startswith(unwanted_prefix):

@@ -147,7 +147,16 @@ class EncodecTokenizer:
     def decode(self, tokens):
         model = self.load_model(bandwidth=6, device=self.device)
         tokens = self.deserialize_tokens(tokens)
-        good_audio = bark.api.generate_fine(x_coarse_gen=tokens[0:2, :], silent=True)
+        print(f'decoding tokens shape: {tokens.shape}')
+
+        assert (isinstance(tokens, np.ndarray))
+        assert (len(tokens.shape) == 2)
+        assert (1 <= tokens.shape[0] <= 2)
+        assert (tokens.shape[1] > 0)
+        assert (tokens.min() >= 0)
+        assert (tokens.max() <= 1024 - 1)
+
+        good_audio = bark.api.generate_fine(x_coarse_gen=tokens[0:2, :], silent=False)
         good_audio = np.expand_dims(good_audio, axis=0)
         good_audio = torch.from_numpy(good_audio)
         wav = model.decode([(good_audio, None)])
