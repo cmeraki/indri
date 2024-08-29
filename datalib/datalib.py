@@ -21,6 +21,8 @@ class Sample:
     acoustic_tokens: str = None
     text_tokens: str = None
 
+    dump: dict = None
+
     def from_json(self, jss):
         self.__dict__ = json.loads(jss)
         return self
@@ -94,7 +96,7 @@ class Dataset:
 
         for name in self.dirs:
             dir = self.dirs[name]
-            print('archiving {name}:{dir}')
+            print(f'archiving {name}:{dir}')
 
             tar_fname = self.local_path / f'{name}.tar'
             arcname = dir.relative_to(self.local_path)
