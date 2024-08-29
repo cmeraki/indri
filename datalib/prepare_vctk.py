@@ -10,7 +10,8 @@ DSNAME = 'vctk'
 
 def stream_samples(hf_repo_id):
     dataset = load_dataset(hf_repo_id,
-                           split='train')
+                           split='train',
+                           streaming=True)
 
     return iter(dataset)
 
@@ -18,7 +19,7 @@ def stream_samples(hf_repo_id):
 def make_dataset():
     dataset = Dataset(repo_id=DSNAME)
 
-    for item in tqdm(stream_samples('CSTR-Edinburgh/vctk')):
+    for item in tqdm(stream_samples('sanchit-gandhi/vctk')):
         sample = dataset.create_sample(id=item['text_id'] + '_' + item['speaker_id'])
         sample.raw_text = item['text']
         sample.speaker_id = item['speaker_id']
