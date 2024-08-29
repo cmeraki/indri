@@ -1,27 +1,28 @@
+import os
 import glob
 import torch
 import random
-
 import numpy as np
+from tqdm import tqdm
 from pathlib import Path
 
 from tts.gpt2_trainer import train as gpt_train
 from tts.gpt2_model import get_model
-from common import TEXT, SEMANTIC, ACOUSTIC, DEVICE
-from common import Config as cfg
-from tqdm import tqdm
+from tts.config import TEXT, SEMANTIC, ACOUSTIC, DEVICE, Config as cfg
 
 print(cfg.__dict__)
 
 class DataLoader:
-    def __init__(self, 
-                 data_dir, 
-                 source, 
-                 target, 
-                 max_source_tokens=256, 
-                 prompt_length=0, 
-                 max_files=None):
-        
+    def __init__(
+        self,
+        data_dir,
+        source,
+        target,
+        max_source_tokens=256,
+        prompt_length=0,
+        max_files=None
+    ):
+
         self.data_dir = data_dir
         self.source = source
         self.target = target
@@ -29,13 +30,14 @@ class DataLoader:
         self.max_source_tokens = max_source_tokens
         self.prompt_length = prompt_length
         self.prompting = False
-        
+
         self.files, self.filenames = self.load_files()
-        
+
+        print(f'Training {source} to {target} with max source tokens {max_source_tokens} and max files {max_files}')
+
     def load_files(self):
         files = {}
         filenames = None
-
 
         for type in [self.source, self.target]:
             files[type] = {}
@@ -63,10 +65,12 @@ class DataLoader:
         return files, filenames
 
     @staticmethod
-    def codebook_encoding(arr: torch.tensor,
-                          per_codebook_size: int):
+    def codebook_encoding(
+        arr: torch.tensor,
+        per_codebook_size: int
+    ):
 
-        # interleave n codebooks as 1
+        # Interleave n codebooks as 1
         c, n = arr.shape
         i_values = np.arange(c) * per_codebook_size
         arr += i_values.reshape(c, 1)
@@ -79,16 +83,9 @@ class DataLoader:
         source_arr = source_arr + cfg.OFFSET[source]
         source_arr = np.reshape(source_arr, -1)
         source_arr = source_arr[0: max_source_tokens]
-        # bark trains with fixed size source 
-        
-        # source_arr = np.pad(
-        #     source_arr,
-        #         (0, max_source_tokens - len(source_arr)),
-        #         constant_values=cfg.PAD_TOKEN[source],
-        #         mode="constant",
-        #     )
+
         return source_arr
-    
+
     @staticmethod
     def prepare_target(target_arr, target):
         target_arr = target_arr + cfg.OFFSET[target]
@@ -158,30 +155,36 @@ def train_translator(source, target, data_dir, out_dir, pretrained=None, prompt_
     vocab_size = cfg.VOCAB_SIZE
     out_dir = out_dir / f'{source}_{target}'
 
-    model = get_model(vocab_size=vocab_size,
-                      device=DEVICE,
-                      path=pretrained)
+    model = get_model(
+        vocab_size=vocab_size,
+        device=DEVICE,
+        path=pretrained
+    )
 
     print(f"{source}:{target} Vocab size", vocab_size)
     print("Model outdir", out_dir)
     print(f"Training {source} {target}".upper())
 
-    data_generator = DataLoader(data_dir=data_dir,
-                                source=source,
-                                target=target,
-                                prompt_length=prompt_length)
+    data_generator = DataLoader(
+        data_dir=data_dir,
+        source=source,
+        target=target,
+        max_source_tokens=cfg.MAX_SOURCE_TOKENS[source],
+        prompt_length=prompt_length
+    )
 
-
-    gpt_train(model,
-              get_batch=data_generator.get_batch,
-              out_dir=out_dir,
-              steps=16000,
-              block_size=1024,
-              eval_interval=100,
-              eval_steps=10,
-              batch_size=40,
-              grad_accum_steps=8,
-              device=DEVICE)
+    gpt_train(
+        model,
+        get_batch=data_generator.get_batch,
+        out_dir=out_dir,
+        steps=cfg.STEPS,
+        block_size=cfg.BLOCK_SIZE[source],
+        eval_interval=cfg.EVAL_INTERVAL,
+        eval_steps=cfg.EVAL_STEPS,
+        batch_size=cfg.BATCH_SIZE,
+        grad_accum_steps=cfg.GRAD_ACCUM_STEPS,
+        device=DEVICE
+    )
 
     return out_dir
 
@@ -190,32 +193,43 @@ def download_dataset(local_path):
         print("Already downloaded")
         return
 
-    from huggingface_hub import snapshot_download
     import tarfile
+    from huggingface_hub import snapshot_download
 
-    snapshot_download('cmeraki/gs_xl_en_tokens', 
-                      repo_type='dataset', 
-                      local_dir=local_path)
-    
-    for tar_name in glob.glob(f"{local_path}/*.tar"):
+    datasets = [
+        'cmeraki/expresso',
+        # 'cmeraki/gs_xl_en_tokens',
+        # 'cmeraki/wavcaps',
+        # 'cmeraki/jenny',
+        # 'cmeraki/peoples_speech_tokens'
+    ]
+    for dataset_name in datasets:
+        snapshot_download(
+            dataset_name,
+            repo_type='dataset',
+            local_dir=os.path.join(local_path, dataset_name)
+        )
+
+    for tar_name in glob.glob(f"{local_path}/**/*.tar"):
         print(tar_name)
         tf = tarfile.open(tar_name)
-        tf.extractall(path=local_path)
+        tf.extractall(path=os.path.join(local_path, dataset_name))
         tf.close()
-    
+
     with open(f'{local_path}/success', 'w') as flag:
         flag.write('y')
 
 def train():
     from common import cache_dir
-    data_dir = f'{cache_dir}/data/gs_xl_en_tokens/'
-    
+
+    data_dir = f'{cache_dir}/data/'
+    out_dir = Path(f'{cache_dir}/models/mymodel/')
+
     download_dataset(data_dir)
-    out_dir = Path(f'{cache_dir}/data/models/mymodel/')
-    
+
     train_translator(TEXT, SEMANTIC, data_dir, out_dir, prompt_length=0)
     train_translator(SEMANTIC, ACOUSTIC, data_dir, out_dir, prompt_length=0)
     train_translator(SEMANTIC, TEXT, data_dir, out_dir, prompt_length=0)
-    
+
 if __name__ == '__main__':
     train()
