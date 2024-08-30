@@ -296,7 +296,7 @@ if __name__ == "__main__":
     for i in range(10):
         semantic_tokens = semlib.text_to_semantic_long(text)
 
-        wav = semlib.semantic_to_audio_long(semantic_tokens)
+        wav = semlib.semantic_to_audio_long(semantic_tokens, model=semlib.semantic_acoustic_model)
         print("=============")
         print("Writing output to", args.output)
         save_audio(wav=wav[0], path=f'test_{i}.wav', sample_rate=24000)
