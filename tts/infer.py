@@ -7,7 +7,7 @@ from encodec.utils import save_audio
 
 from tts.gpt2_model import get_model
 from tts.train import DataLoader
-from common import SEMANTIC, TEXT, ACOUSTIC, device, ctx, seed
+from common import SEMANTIC, TEXT, ACOUSTIC, DEVICE, ctx, seed
 from common import Config as cfg
 from datalib.tokenlib import get_tokenizer
 from common import cache_dir
@@ -48,7 +48,7 @@ def generate(model, source, target, source_tokens, max_length, max_source_tokens
     source_tokens = np.hstack([source_tokens, cfg.INFER_TOKEN[target]])
     input_tokens = (torch.tensor(source_tokens,
                                  dtype=torch.long,
-                                 device=device)[None, ...])
+                                 device=DEVICE)[None, ...])
 
     # Reset the random state between generations
     torch.manual_seed(seed)
@@ -71,7 +71,7 @@ def generate(model, source, target, source_tokens, max_length, max_source_tokens
 
 
 class AudioSemantic:
-    def __init__(self, size='125m', device=device):
+    def __init__(self, size='125m', device=DEVICE):
         model_dir = f'{cache_dir}/models/tts_xl_30k_long_125m_en/'
         snapshot_download(f'cmeraki/tts_xl_30k_long_125m_en', local_dir=model_dir)
 
@@ -126,10 +126,10 @@ class AudioSemantic:
         # print('usage', usage, 'n_tokens', attn_mask.sum())
         
         attn_mask = torch.tensor(attn_mask)
-        attn_mask = attn_mask.to(device)
+        attn_mask = attn_mask.to(DEVICE)
 
         padded_text_tokens = torch.tensor(padded_text_tokens)
-        padded_text_tokens = padded_text_tokens.to(device)
+        padded_text_tokens = padded_text_tokens.to(DEVICE)
 
         # Reset the random state between generations
         torch.manual_seed(seed)

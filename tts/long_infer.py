@@ -8,7 +8,7 @@ from encodec.utils import save_audio
 
 from common import cache_dir
 from common import Config as cfg
-from common import SEMANTIC, TEXT, ACOUSTIC, device, ctx, seed
+from common import SEMANTIC, TEXT, ACOUSTIC, DEVICE, ctx, seed
 from datalib.tokenlib import get_tokenizer
 from tts.gpt2_model import get_model
 from tts.utils import read_audio_file
@@ -17,7 +17,7 @@ def load_model(path):
     print(f'Loading model from {path}')
     model = get_model(
         vocab_size=cfg.VOCAB_SIZE,
-        device=device,
+        device=DEVICE,
         compile=True,
         path=path
     )
@@ -34,6 +34,39 @@ def extract_new_tokens(y, target):
         y = y[start_idx[0] + 1:]
 
     return y
+
+def generate(model, source, target, source_tokens, device, **generate_kwargs):
+
+    temperature = generate_kwargs.get("temperature", 0.9)
+    top_k = generate_kwargs.get("top_k", 100)
+    max_new_tokens = generate_kwargs.get("max_new_tokens", 3072)
+    max_source_tokens = generate_kwargs.get("max_source_tokens", 256)
+
+    source_tokens = source_tokens + cfg.OFFSET[source]
+    source_tokens = np.reshape(source_tokens, -1)
+    source_tokens = source_tokens[0: max_source_tokens]
+
+    source_tokens = np.hstack([source_tokens, cfg.INFER_TOKEN[target]])
+    input_tokens = (torch.tensor(source_tokens, dtype=torch.long, device=device)[None, ...])
+
+    # torch.manual_seed(seed)
+    # torch.cuda.manual_seed(seed)
+
+    with torch.no_grad():
+        with ctx:
+            target_tokens = model.generate(
+                input_tokens,
+                max_new_tokens,
+                temperature=temperature,
+                top_k=top_k,
+                stop_token=cfg.STOP_TOKEN[target]
+            )
+
+            target_tokens = target_tokens.detach().cpu().numpy()[0]
+
+    target_tokens = extract_new_tokens(target_tokens, target=target)
+    target_tokens = target_tokens - cfg.OFFSET[target]
+    return target_tokens
 
 def generate_long(
         model,
@@ -101,8 +134,8 @@ def generate_long(
         print(f'{idx}: Source tokens shape: {source_cut.shape}, {input_tokens.shape}, start idx: {idx}, end idx: {end_idx}')
 
         # Reset the random state between generations
-        torch.manual_seed(seed)
-        torch.cuda.manual_seed(seed)
+        # torch.manual_seed(seed)
+        # torch.cuda.manual_seed(seed)
 
         with torch.no_grad():
             with ctx:
@@ -157,12 +190,14 @@ class AudioSemantic:
 
         model_dir = f'{cache_dir}/models/tts_xl_30k_long_125m_en/'
         self.text_semantic_model = load_model(path=f'{model_dir}/text_semantic/gpt_last.pt')
+        self.semantic_acoustic_model_new = load_model(path=f'{model_dir}/semantic_acoustic/gpt_last.pt')
 
         model_dir = f'{cache_dir}/models/tts_en_xl_{size}/'
         self.semantic_acoustic_model = load_model(path=f'{model_dir}/semantic_acoustic/gpt_last.pt')
 
-        self.text_tokenizer = get_tokenizer(TEXT, device=device)
-        self.acoustic_tokenizer = get_tokenizer(ACOUSTIC, device=device)
+        self.text_tokenizer = get_tokenizer(TEXT, device=DEVICE)
+        self.acoustic_tokenizer = get_tokenizer(ACOUSTIC, device=DEVICE)
+        self.device = DEVICE
 
     def text_to_semantic_long(self, text, **generate_kwargs):
         """
@@ -183,7 +218,7 @@ class AudioSemantic:
                 source=TEXT,
                 target=SEMANTIC,
                 source_tokens=np.array(self.text_tokenizer.encode(sentence)),
-                device=device,
+                device=self.device,
                 **generate_kwargs
             )
             semantic_tokens.extend(sem_toks)
@@ -191,15 +226,15 @@ class AudioSemantic:
         return np.array(semantic_tokens).astype(np.int64)
 
 
-    def semantic_to_audio_long(self, tokens, retries=5, **generate_kwargs):
+    def semantic_to_audio_long(self, tokens, retries=5, model=None, **generate_kwargs):
         for i in range(retries):
             try:
                 acoustic_tokens, _, _ = generate_long(
-                    model=self.semantic_acoustic_model,
+                    model=model,
                     source=SEMANTIC,
                     target=ACOUSTIC,
                     source_tokens=tokens,
-                    device=device,
+                    device=self.device,
                     **generate_kwargs
                 )
                 break
@@ -209,6 +244,20 @@ class AudioSemantic:
 
         if i == retries - 1:
             raise Exception('Failed to generate acoustic tokens')
+
+        wav = self.acoustic_tokenizer.decode(torch.tensor(acoustic_tokens))
+        return wav.cpu()
+
+
+    def semantic_to_audio(self, tokens, model=None, **generate_kwargs):
+        acoustic_tokens = generate(
+            model=model,
+            source=SEMANTIC,
+            target=ACOUSTIC,
+            source_tokens=tokens,
+            device=self.device,
+            **generate_kwargs
+        )
 
         wav = self.acoustic_tokenizer.decode(torch.tensor(acoustic_tokens))
         return wav.cpu()
@@ -247,7 +296,7 @@ if __name__ == "__main__":
     for i in range(10):
         semantic_tokens = semlib.text_to_semantic_long(text)
 
-        wav = semlib.semantic_to_audio_long(semantic_tokens)
+        wav = semlib.semantic_to_audio_long(semantic_tokens, model=semlib.semantic_acoustic_model)
         print("=============")
         print("Writing output to", args.output)
         save_audio(wav=wav[0], path=f'test_{i}.wav', sample_rate=24000)

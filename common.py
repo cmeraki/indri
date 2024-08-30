@@ -21,14 +21,12 @@ rng_state = torch.random.get_rng_state()
 
 print(f'RNG state: {rng_state}')
 
-device = 'cuda:0'
+DEVICE = 'cuda:0'
 dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16'
 
-device_type = 'cuda' if 'cuda' in device else 'cpu'
+device_type = 'cuda' if 'cuda' in DEVICE else 'cpu'
 ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
 ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
-
-DEVICE = 'cuda:0'
 
 cache_dir = os.path.expanduser("~/.cache/indri/")
 Path(cache_dir).mkdir(exist_ok=True, parents=True)
