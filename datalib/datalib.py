@@ -21,7 +21,7 @@ class Sample:
     acoustic_tokens: str = None
     text_tokens: str = None
 
-    dump: dict = None
+    metadata: dict = None
 
     def from_json(self, jss):
         self.__dict__ = json.loads(jss)
@@ -74,6 +74,7 @@ class Dataset:
             tar_name = f'{name}.tar'
             hf_hub_download(repo_id=f'{self.hf_user}/{hf_repo_id}',
                             token=self.hf_token,
+                            repo_type="dataset",
                             local_dir=self.local_path,
                             filename=tar_name)
 
@@ -87,7 +88,12 @@ class Dataset:
             # os.remove(tar_fname)
 
     def upload(self, hf_repo_id=None):
+        if hf_repo_id is None:
+            hf_repo_id = self.repo_id
+
+        print(f'Creating repo on HuggingFace, repo_id: {self.hf_user}/{hf_repo_id}')
         create_repo(repo_id=f'{self.hf_user}/{hf_repo_id}',
+                    repo_type="dataset",
                     token=self.hf_token,
                     exist_ok=True)
 
@@ -103,7 +109,9 @@ class Dataset:
             with tarfile.open(tar_fname, "w") as tar:
                 tar.add(dir, arcname=arcname)
 
+            print(f'uploading {name}:{tar_fname}')
             upload_file(repo_id=f'{self.hf_user}/{hf_repo_id}',
+                        repo_type="dataset",
                         path_or_fileobj=tar_fname,
                         path_in_repo=f'{name}.tar',
                         token=self.hf_token)

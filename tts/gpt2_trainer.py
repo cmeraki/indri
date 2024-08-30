@@ -1,8 +1,8 @@
 import os
 import time
 import math
-from contextlib import nullcontext
 import torch
+from contextlib import nullcontext
 from tqdm import tqdm
 
 seed_offset = 0
@@ -12,13 +12,15 @@ torch.manual_seed(1337 + seed_offset)
 torch.backends.cuda.matmul.allow_tf32 = True  # allow tf32 on matmul
 torch.backends.cudnn.allow_tf32 = True  # allow tf32 on cudnn
 
-ptdtype = {'float32': torch.float32,
-           'bfloat16': torch.bfloat16,
-           'float16': torch.float16}[dtype]
+ptdtype = {
+    'float32': torch.float32,
+    'bfloat16': torch.bfloat16,
+    'float16': torch.float16
+}[dtype]
 
 
 def get_ctx(device_type):
-    ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
+    ctx = nullcontext() if device_type == 'cpu' else torch.autocast(device_type=device_type, dtype=ptdtype)
     return ctx
 
 
@@ -62,6 +64,8 @@ def train(model,
           eval_steps=100,
           device='cpu'):
 
+    print(f'Training with {steps} steps, {batch_size} batch size, {block_size} block size')
+
     os.makedirs(out_dir, exist_ok=True)
 
     device_type = 'cuda' if 'cuda' in device else 'cpu'
@@ -70,8 +74,7 @@ def train(model,
     ctx = get_ctx(device_type)
 
     tokens_per_iter = grad_accum_steps * batch_size * block_size
-    print(f"tokens per iteration will be: {tokens_per_iter:,}")
-
+    print(f"Tokens per iteration will be: {tokens_per_iter:,}")
     print("NUM TOTAL TOKENS:", (tokens_per_iter * steps)/(10**9), "Billion")
 
     scaler = torch.cuda.amp.GradScaler(enabled=(dtype == 'float16'))
@@ -133,17 +136,21 @@ def dummy_get_batch(split, block_size, batch_size, device):
 
 if __name__ == '__main__':
     from gpt2_model import get_model
-    model = get_model(n_layer=4,
-                      n_head=4,
-                      n_embd=256,
-                      vocab_size=3072,
-                      block_size=1024)
+    model = get_model(
+        n_layer=4,
+        n_head=4,
+        n_embd=256,
+        vocab_size=3072,
+        block_size=1024
+    )
 
-    train(model,
-          get_batch=dummy_get_batch,
-          out_dir='out',
-          steps=3000,
-          block_size=1024,
-          eval_interval=5,
-          eval_steps=4,
-          batch_size=64)
+    train(
+        model,
+        get_batch=dummy_get_batch,
+        out_dir='out',
+        steps=3000,
+        block_size=1024,
+        eval_interval=5,
+        eval_steps=4,
+        batch_size=64
+    )
