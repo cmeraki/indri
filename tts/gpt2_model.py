@@ -301,26 +301,33 @@ class GPT(nn.Module):
         self.lm_head.weight = self.transformer.wte.weight
 
         self.config.vocab_size = new_vocab_size
-    
 
-def get_model(n_layer=12,
-              n_head=12,
-              n_embd=768,
-              vocab_size=53376,
-              dropout=0.0,
-              block_size=1024,
-              bias=False,
-              device='cpu',
-              compile=True,
-              path=None):
 
-    model_args = dict(n_layer=n_layer,
-                      n_head=n_head,
-                      n_embd=n_embd,
-                      block_size=block_size,
-                      bias=bias,
-                      vocab_size=vocab_size,
-                      dropout=dropout)
+def get_model(
+        model_type='gpt2',
+        vocab_size=53376,
+        dropout=0.0,
+        block_size=1024,
+        bias=False,
+        device='cpu',
+        compile=True,
+        path=None
+    ):
+
+    config_args = {
+            'gpt2':         dict(n_layer=12, n_head=12, n_embd=768),  # 124M params
+            'gpt2-medium':  dict(n_layer=24, n_head=16, n_embd=1024), # 350M params
+            'gpt2-large':   dict(n_layer=36, n_head=20, n_embd=1280), # 774M params
+            'gpt2-xl':      dict(n_layer=48, n_head=25, n_embd=1600), # 1558M params
+    }[model_type]
+
+    model_args = dict(
+        block_size=block_size,
+        bias=bias,
+        vocab_size=vocab_size,
+        dropout=dropout
+    )
+    model_args.update(config_args)
 
     if path:
         config = torch.load(path, map_location=device)['config']
@@ -329,8 +336,10 @@ def get_model(n_layer=12,
             gptconf = GPTConfig(**model_args)
         else:
             gptconf = config
-    
-    print(gptconf)
+    else:
+        gptconf = GPTConfig(**model_args)
+
+    print("MODEL CONFIG: ", gptconf)
 
     model = GPT(gptconf)
     if path:

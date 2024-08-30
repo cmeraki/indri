@@ -6,3 +6,4 @@ transformers
 soundfile
 librosa
 gradio
+audiotoken

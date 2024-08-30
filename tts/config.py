@@ -17,9 +17,8 @@ torch.cuda.manual_seed(seed)
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 rng_state = torch.random.get_rng_state()
-print(f'RNG state: {rng_state}')
 
-DEVICE = 'cuda:0'
+DEVICE = 'cuda:1'
 dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16'
 device_type = 'cuda' if 'cuda' in DEVICE else 'cpu'
 ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
@@ -73,6 +72,8 @@ class Config:
 
     print('GAP tokens =', VOCAB_SIZE - max(STOP_TOKEN.values()))
 
+    MODEL_TYPE = 'gpt2-large'
+
     # These are defined based on the source
     MAX_SOURCE_TOKENS = {
         TEXT: 256,
@@ -91,7 +92,7 @@ class Config:
 
     # Training specific configs
     STEPS = 16000
-    EVAL_INTERVAL = 100
+    EVAL_INTERVAL = 500
     EVAL_STEPS = 10
-    BATCH_SIZE = 40
-    GRAD_ACCUM_STEPS = 8
+    BATCH_SIZE = 4
+    GRAD_ACCUM_STEPS = 32

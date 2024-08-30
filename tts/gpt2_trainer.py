@@ -1,8 +1,8 @@
 import os
 import time
 import math
-from contextlib import nullcontext
 import torch
+from contextlib import nullcontext
 from tqdm import tqdm
 
 seed_offset = 0
@@ -64,6 +64,8 @@ def train(model,
           eval_steps=100,
           device='cpu'):
 
+    print(f'Training with {steps} steps, {batch_size} batch size, {block_size} block size')
+
     os.makedirs(out_dir, exist_ok=True)
 
     device_type = 'cuda' if 'cuda' in device else 'cpu'
@@ -72,8 +74,7 @@ def train(model,
     ctx = get_ctx(device_type)
 
     tokens_per_iter = grad_accum_steps * batch_size * block_size
-    print(f"tokens per iteration will be: {tokens_per_iter:,}")
-
+    print(f"Tokens per iteration will be: {tokens_per_iter:,}")
     print("NUM TOTAL TOKENS:", (tokens_per_iter * steps)/(10**9), "Billion")
 
     scaler = torch.cuda.amp.GradScaler(enabled=(dtype == 'float16'))

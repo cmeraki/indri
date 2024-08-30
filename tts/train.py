@@ -6,9 +6,11 @@ import numpy as np
 from tqdm import tqdm
 from pathlib import Path
 
+from tts.config import Config as cfg
+from tts.config import TEXT, SEMANTIC, ACOUSTIC, DEVICE
+
 from tts.gpt2_trainer import train as gpt_train
 from tts.gpt2_model import get_model
-from tts.config import TEXT, SEMANTIC, ACOUSTIC, DEVICE, Config as cfg
 
 print(cfg.__dict__)
 
@@ -41,7 +43,7 @@ class DataLoader:
 
         for type in [self.source, self.target]:
             files[type] = {}
-            file_iter = tqdm(glob.iglob(f"{self.data_dir}/{type}/*.npy"), desc=f'reading {type}')
+            file_iter = tqdm(glob.iglob(f"{self.data_dir}/{type}/**/*.npy", recursive=True), desc=f'reading {type}')
             for f in file_iter:
                 files[type][Path(f).name] = Path(f)             
                 if self.max_files:
@@ -146,24 +148,20 @@ class DataLoader:
 
         return x, y
 
-def get_vocab_size():
-    vocab_size = cfg.VOCAB_SIZE
-
-    return vocab_size
-
 def train_translator(source, target, data_dir, out_dir, pretrained=None, prompt_length=0):
-    vocab_size = cfg.VOCAB_SIZE
-    out_dir = out_dir / f'{source}_{target}'
+    out_dir = os.path.join(out_dir, f'{source}_{target}')
 
     model = get_model(
-        vocab_size=vocab_size,
+        model_type=cfg.MODEL_TYPE,
+        vocab_size=cfg.VOCAB_SIZE,
+        block_size=cfg.BLOCK_SIZE[source],
         device=DEVICE,
         path=pretrained
     )
 
-    print(f"{source}:{target} Vocab size", vocab_size)
+    print(f"Training {cfg.MODEL_TYPE} {source} {target}".upper())
+    print(f"{source}:{target} Vocab size", cfg.VOCAB_SIZE)
     print("Model outdir", out_dir)
-    print(f"Training {source} {target}".upper())
 
     data_generator = DataLoader(
         data_dir=data_dir,
@@ -189,47 +187,53 @@ def train_translator(source, target, data_dir, out_dir, pretrained=None, prompt_
     return out_dir
 
 def download_dataset(local_path):
-    if Path(f'{local_path}/success').exists():
-        print("Already downloaded")
-        return
+    print(f'Downloading dataset at {local_path}')
 
     import tarfile
     from huggingface_hub import snapshot_download
 
     datasets = [
-        'cmeraki/expresso',
-        # 'cmeraki/gs_xl_en_tokens',
+        # 'cmeraki/expresso',
+        'cmeraki/gs_xl_en_tokens',
         # 'cmeraki/wavcaps',
         # 'cmeraki/jenny',
         # 'cmeraki/peoples_speech_tokens'
     ]
     for dataset_name in datasets:
+        if Path(os.path.join(local_path, dataset_name.split('/')[-1], 'success')).exists():
+            print(f"Already downloaded {dataset_name}")
+            continue
+
+        print(f"Downloading data at {local_path}")
         snapshot_download(
             dataset_name,
             repo_type='dataset',
-            local_dir=os.path.join(local_path, dataset_name)
+            local_dir=os.path.join(local_path)
         )
 
-    for tar_name in glob.glob(f"{local_path}/**/*.tar"):
-        print(tar_name)
-        tf = tarfile.open(tar_name)
-        tf.extractall(path=os.path.join(local_path, dataset_name))
-        tf.close()
+    # for tar_name in glob.glob(f"{local_path}/**/*.tar"):
+    #     print(tar_name)
+    #     tf = tarfile.open(tar_name)
+    #     tf.extractall(path=os.path.join(local_path))
+    #     tf.close()
 
-    with open(f'{local_path}/success', 'w') as flag:
-        flag.write('y')
+    # with open(f'{local_path}/success', 'w') as flag:
+    #     flag.write('y')
 
 def train():
     from common import cache_dir
 
-    data_dir = f'{cache_dir}/data/'
-    out_dir = Path(f'{cache_dir}/models/mymodel/')
+    data_dir = Path(os.path.join(cache_dir, 'romit', 'data'))
+    out_dir = Path(os.path.join(cache_dir, 'romit', 'models', 'large'))
 
-    download_dataset(data_dir)
+    print("DATA DIR: ", data_dir)
+    print("OUT DIR: ", out_dir)
 
-    train_translator(TEXT, SEMANTIC, data_dir, out_dir, prompt_length=0)
+    # download_dataset(data_dir)
+
+    # train_translator(TEXT, SEMANTIC, data_dir, out_dir, prompt_length=0)
     train_translator(SEMANTIC, ACOUSTIC, data_dir, out_dir, prompt_length=0)
-    train_translator(SEMANTIC, TEXT, data_dir, out_dir, prompt_length=0)
+    # train_translator(SEMANTIC, TEXT, data_dir, out_dir, prompt_length=0)
 
 if __name__ == '__main__':
     train()
