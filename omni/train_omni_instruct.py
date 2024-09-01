@@ -10,10 +10,23 @@ from tts.gpt2_model import get_model, GPT
 from common import DEVICE
 from common import Config as cfg
 import json
+from tqdm import tqdm
 from common import TEXT, SEMANTIC
 
 print(cfg.__dict__)
 
+tts_start_token = '[TTS]'
+asr_start_token = '[ASR]'
+continue_token = '[CONTINUE]'
+stop_token = cfg.OMNI_STOP_TOKEN
+
+def speaker_id_to_text(id, dataset=None):
+    if dataset:
+        text = f'[spkr_{dataset}_{id}]'
+    else:
+        text = f'[spkr_{id}]'
+
+    return text
 
 def decorate(tokens, type):
     tokens = tokens + cfg.OFFSET[type]
@@ -28,8 +41,27 @@ def replace_consecutive(arr):
     return arr[mask]
 
 
+# Datasets
+# TTS speaker datasets : hifi, cmu, expresso, jenny + mlseng
+# TTS datasets : gs, ps, mlseng
+# TTS cleanup required in text : gigaspeech
+# mlseng need to recreate metadata
+# Cartoon data scraping : reject data from onepiece, need to scrape a good set
+# prepare annotations on gigaspeech, it was made long long ago
+
 class DataLoader:
     def __init__(self, interleaved_dir, speech_dir, text_dir):
+        # types of data on which training is done
+        # TTS
+        # TTS with speaker id
+        # ASR
+        # continuation
+            # text-text
+            # text-semantic
+            # semantic-text
+        # raw semantic
+        # raw text
+
         self.interleaved_dir = interleaved_dir
         self.speech_dir = speech_dir
         self.text_dir = text_dir
@@ -38,26 +70,43 @@ class DataLoader:
         self.speech_files = self.load_numpy(self.speech_dir)
         self.text_files = self.load_numpy(self.text_dir)
 
-    def load_numpy(self, data_dir):
-        files = glob.glob(f'{data_dir}/*.npy')
+    def load_metadata(self, dirs):
+        self.metadata = {}
+        for dir in dirs:
+            metadata_path = Path(dir) / 'annotations' / 'metadata.jsonl'
+            if metadata_path.exists():
+                for line in open(metadata_path):
+                    metadata = json.loads(line.strip())
+                    self.metadata.update(metadata)
 
-        files = list(files)
+    def load_numpy(self, data_dirs):
+        mapping = {}
+        for data_dir in tqdm(data_dirs, desc='loading..'):
+            files = glob.glob(f'{data_dir}/*.npy')
+            files = list(files)
 
-        print("Num files", len(files))
+            print(f"Num numpy files in {data_dir}", len(mapping))
 
-        files = {
-            'train': files[1000:],
-            'val': files[:1000]
+            for filepath in files:
+                fname = Path(filepath).name
+                mapping[fname] = filepath
+
+        print(f"Total numpy files:", len(mapping))
+
+        keys = list(mapping.keys())
+
+        mapping = {
+            'train': {mapping[k] for k in keys[1000:]},
+            'val': {mapping[k] for k in keys[:1000]},
         }
 
-        return files
+        return mapping
 
     def load_interleaved(self, data_dir):
         files = glob.glob(f'{data_dir}/*.json')
-
         files = list(files)
 
-        print("Num files", len(files))
+        print("Num interleaved files", len(files))
 
         files = {
             'train': files[1000:],
@@ -66,7 +115,7 @@ class DataLoader:
 
         return files
 
-    def get_tokens_interleaved(self, split):
+    def get_tokens_continue(self, split):
         filename = random.choice(self.interleaved_files[split])
         data = json.load(open(filename))
         size = len(data[TEXT])
@@ -82,7 +131,6 @@ class DataLoader:
             output.extend(tokens)
 
         output = np.hstack(output)
-        # print(output)
         return output
 
     def get_tokens_text(self, split):
@@ -99,6 +147,30 @@ class DataLoader:
         tokens = decorate(tokens, SEMANTIC)
         return tokens
 
+    def get_tts(self, split):
+        # changing the way loading happens for asr and tts
+        # now that we have speaker ids, loading would start from metadata
+        meta = random.choice(self.metadata)
+        text_tokens = np.load(meta['text_tokens']) + cfg.OFFSET[TEXT]
+        speech_tokens = np.load(meta['speech_tokens']) + cfg.OFFSET[SEMANTIC]
+        speaker_id = meta['speaker_id']
+        tokens = [text_tokens, tts_start_token, speaker_id, speech_tokens, stop_token]
+        tokens = np.hstack(tokens)
+        return tokens
+
+    def get_asr(self, split):
+        meta = random.choice(self.metadata)
+        text_tokens = np.load(meta['text_tokens']) + cfg.OFFSET[TEXT]
+        speech_tokens = np.load(meta['speech_tokens']) + cfg.OFFSET[SEMANTIC]
+        speaker_id = meta['speaker_id']
+        tokens = [speech_tokens, asr_start_token, text_tokens, stop_token]
+        tokens = np.hstack(tokens)
+        return tokens
+
+
+def get_tts_with_speaker_id(self, split):
+        pass
+
     def load_batch(self, split, block_size, batch_size):
         x = np.zeros(shape=(batch_size, block_size), dtype=np.int64)
         y = np.zeros(shape=(batch_size, block_size), dtype=np.int64)
@@ -107,7 +179,7 @@ class DataLoader:
         # so we don't have to pad later
         x = x + cfg.OMNI_STOP_TOKEN
         y = y + cfg.OMNI_STOP_TOKEN
-        methods = [self.get_tokens_interleaved,
+        methods = [self.get_tokens_continue,
                    self.get_tokens_speech,
                    self.get_tokens_text]
 
@@ -182,18 +254,6 @@ def train_omni():
               device=DEVICE)
 
     return out_dir
-
-
-def train():
-    from common import cache_dir
-
-    interleaved_dir = f'{cache_dir}/tinystories_omni/'
-    speech_dir = f'{cache_dir}mls_eng_10k/tokens/semantic/'
-    text_dir = f'{cache_dir}/mls_eng_10k/tokens/text/'
-
-    dl = DataLoader(interleaved_dir=interleaved_dir, speech_dir=speech_dir, text_dir=text_dir)
-    for i in range(10):
-        batch = dl.get_batch('train', DEVICE, 1024, 1)
 
 
 if __name__ == '__main__':
