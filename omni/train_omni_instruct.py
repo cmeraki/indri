@@ -12,21 +12,10 @@ from common import Config as cfg
 import json
 from tqdm import tqdm
 from common import TEXT, SEMANTIC
+from datalib.datalib import Dataset
+from datalib.tokenlib import get_tokenizer
 
 print(cfg.__dict__)
-
-tts_start_token = '[TTS]'
-asr_start_token = '[ASR]'
-continue_token = '[CONTINUE]'
-stop_token = cfg.OMNI_STOP_TOKEN
-
-def speaker_id_to_text(id, dataset=None):
-    if dataset:
-        text = f'[spkr_{dataset}_{id}]'
-    else:
-        text = f'[spkr_{id}]'
-
-    return text
 
 def decorate(tokens, type):
     tokens = tokens + cfg.OFFSET[type]
@@ -50,7 +39,7 @@ def replace_consecutive(arr):
 # prepare annotations on gigaspeech, it was made long long ago
 
 class DataLoader:
-    def __init__(self, interleaved_dir, speech_dir, text_dir):
+    def __init__(self, interleaved_dirs, datasets_dirs):
         # types of data on which training is done
         # TTS
         # TTS with speaker id
@@ -62,45 +51,51 @@ class DataLoader:
         # raw semantic
         # raw text
 
-        self.interleaved_dir = interleaved_dir
-        self.speech_dir = speech_dir
-        self.text_dir = text_dir
+        self.interleaved_dirs = interleaved_dirs
+        self.dataset_dirs = datasets_dirs
 
-        self.interleaved_files = self.load_interleaved(self.interleaved_dir)
-        self.speech_files = self.load_numpy(self.speech_dir)
-        self.text_files = self.load_numpy(self.text_dir)
+        self.text_tokenizer = get_tokenizer(type=TEXT, device='cpu')
 
-    def load_metadata(self, dirs):
-        self.metadata = {}
+        self.load_parallel_data(self.dataset_dirs)
+        # self.interleaved_files = self.load_interleaved(self.interleaved_dirs)
+
+
+        self.tts_start_token = self.text_tokenizer.encode('[TTS]')
+        self.asr_start_token = self.text_tokenizer.encode('[ASR]')
+        self.continue_token = self.text_tokenizer.encode('[CONTINUE]')
+
+
+    def speaker_id_to_text(self, id, dataset=None):
+        if dataset:
+            text = f'[spkr_{dataset}_{id}]'
+        else:
+            if id is not None and len(id) > 0:
+                text = f'[spkr_{id}]'
+            else:
+                text = '[spkr_unk]'
+        
+        return self.text_tokenizer.encode(text)
+
+    def load_parallel_data(self, dirs):
+        metadata = {}
         for dir in dirs:
-            metadata_path = Path(dir) / 'annotations' / 'metadata.jsonl'
-            if metadata_path.exists():
-                for line in open(metadata_path):
-                    metadata = json.loads(line.strip())
-                    self.metadata.update(metadata)
+            dir = Path(dir)
+            metadata_path =  dir / 'annotation' / 'metadata.jsonl'
+            for line in open(metadata_path):
+                _metadata = json.loads(line.strip())
+                _metadata['dir'] = dir
+                metadata[_metadata['id']] = _metadata
 
-    def load_numpy(self, data_dirs):
-        mapping = {}
-        for data_dir in tqdm(data_dirs, desc='loading..'):
-            files = glob.glob(f'{data_dir}/*.npy')
-            files = list(files)
+        print("num metadata lines", len(metadata))
 
-            print(f"Num numpy files in {data_dir}", len(mapping))
-
-            for filepath in files:
-                fname = Path(filepath).name
-                mapping[fname] = filepath
-
-        print(f"Total numpy files:", len(mapping))
-
-        keys = list(mapping.keys())
-
-        mapping = {
-            'train': {mapping[k] for k in keys[1000:]},
-            'val': {mapping[k] for k in keys[:1000]},
+        self.ids = list(metadata.keys())
+        
+        self.ids = {
+            'train' : self.ids[1000:],
+            'val' : self.ids[:1000],
         }
 
-        return mapping
+        self.metadata = metadata
 
     def load_interleaved(self, data_dir):
         files = glob.glob(f'{data_dir}/*.json')
@@ -133,43 +128,62 @@ class DataLoader:
         output = np.hstack(output)
         return output
 
+    def normalize_text(self, text):
+        text = text.lower()
+        text = text.replace("<comma>", ',')
+        text = text.replace("<period>", '.')
+        text = text.replace('<questionmark>', '?')
+        text = text.replace('<exclamationpoint>', '!')
+        text = text.replace("\n", " ")
+        return text
+
+    def get_text_tokens_for_id(self, id):
+        sample = self.metadata[id]
+        text = sample['raw_text']
+        norm_text = self.normalize_text(text)
+        tokens = np.asarray(self.text_tokenizer.encode(norm_text))
+        return tokens
+
     def get_tokens_text(self, split):
-        filename = random.choice(self.text_files[split])
-        tokens = np.load(filename)
+        id = random.choice(self.ids[split])
+        tokens = self.get_text_tokens_for_id(id)
         tokens = decorate(tokens, TEXT)
         return tokens
 
     def get_tokens_speech(self, split):
-        filename = random.choice(self.speech_files[split])
+        id = random.choice(self.ids[split])
+        filename = self.get_tokens_path(id, SEMANTIC)
         tokens = np.load(filename)
         tokens = tokens.reshape(-1)
         tokens = replace_consecutive(tokens)
         tokens = decorate(tokens, SEMANTIC)
         return tokens
 
+    def get_tokens_path(self, id, type):
+        sample = self.metadata[id]
+        return sample['dir'] / sample[f'{type}_tokens']
+
     def get_tts(self, split):
         # changing the way loading happens for asr and tts
         # now that we have speaker ids, loading would start from metadata
-        meta = random.choice(self.metadata)
-        text_tokens = np.load(meta['text_tokens']) + cfg.OFFSET[TEXT]
-        speech_tokens = np.load(meta['speech_tokens']) + cfg.OFFSET[SEMANTIC]
-        speaker_id = meta['speaker_id']
-        tokens = [text_tokens, tts_start_token, speaker_id, speech_tokens, stop_token]
+        id = random.choice(self.ids[split])
+        text_tokens = self.get_text_tokens_for_id(id) + cfg.OFFSET[TEXT]
+        speech_tokens = np.load(self.get_tokens_path(id, SEMANTIC)).reshape(-1) + cfg.OFFSET[SEMANTIC]
+        speaker_id = self.metadata[id]['speaker_id']
+        speaker_id = self.speaker_id_to_text(speaker_id)
+        tokens = [text_tokens, self.tts_start_token, speaker_id, speech_tokens, cfg.STOP_TOKEN[SEMANTIC]]
         tokens = np.hstack(tokens)
         return tokens
-
+    
     def get_asr(self, split):
-        meta = random.choice(self.metadata)
-        text_tokens = np.load(meta['text_tokens']) + cfg.OFFSET[TEXT]
-        speech_tokens = np.load(meta['speech_tokens']) + cfg.OFFSET[SEMANTIC]
-        speaker_id = meta['speaker_id']
-        tokens = [speech_tokens, asr_start_token, text_tokens, stop_token]
+        # changing the way loading happens for asr and tts
+        # now that we have speaker ids, loading would start from metadata
+        id = random.choice(self.ids[split])
+        text_tokens = self.get_text_tokens_for_id(id) + cfg.OFFSET[TEXT]
+        speech_tokens = np.load(self.get_tokens_path(id, SEMANTIC)).reshape(-1) + cfg.OFFSET[SEMANTIC]
+        tokens = [speech_tokens, self.asr_start_token, text_tokens, cfg.STOP_TOKEN[TEXT]]
         tokens = np.hstack(tokens)
         return tokens
-
-
-def get_tts_with_speaker_id(self, split):
-        pass
 
     def load_batch(self, split, block_size, batch_size):
         x = np.zeros(shape=(batch_size, block_size), dtype=np.int64)
@@ -179,9 +193,13 @@ def get_tts_with_speaker_id(self, split):
         # so we don't have to pad later
         x = x + cfg.OMNI_STOP_TOKEN
         y = y + cfg.OMNI_STOP_TOKEN
-        methods = [self.get_tokens_continue,
-                   self.get_tokens_speech,
-                   self.get_tokens_text]
+
+        methods = [self.get_tokens_speech,
+                   self.get_tokens_text,
+                   #self.get_asr,
+                   self.get_tts,
+                   #self.get_tokens_continue,
+                   ]
 
         for i in range(batch_size):
             method = random.choice(methods)
@@ -220,15 +238,27 @@ def train_omni():
     # download_dataset(data_dir)
     out_dir = Path(f'{cache_dir}/data/models/omni_mixed_large/')
 
-    interleaved_dir = f'{cache_dir}/tinystories_omni/'
-    speech_dir = f'{cache_dir}mls_eng_10k/tokens/semantic/'
-    text_dir = f'{cache_dir}/mls_eng_10k/tokens/text/'
+    interleaved_dir = [f'{cache_dir}/tinystories_omni/']
+
+    datasets_dirs = [f'{cache_dir}/jenny/',
+                     f'{cache_dir}/expresso/', 
+                     f'{cache_dir}/mls_eng_10k/', 
+                    f'{cache_dir}/peoples_speech/', 
+                    f'{cache_dir}/gs_xl_en_tokens/']
+    
+
+    datasets_dirs = [f'{cache_dir}/jenny/',
+                      f'{cache_dir}/expresso/',]
+    
+
+    data_generator = DataLoader(interleaved_dirs=[interleaved_dir],
+                                datasets_dirs=datasets_dirs)
 
     pretrained = 'mdouglas/llmc-gpt2-774M-150B'
     vocab_size = cfg.VOCAB_SIZE
 
-    model = get_model(path=pretrained)
-    # model.expand_vocab(new_vocab_size=vocab_size)
+    model = GPT.from_pretrained(model_type='cmeraki/gpt2-124M-400B')
+    model.expand_vocab(new_vocab_size=vocab_size)
     model.to(DEVICE)
 
     model = torch.compile(model)
@@ -239,9 +269,6 @@ def train_omni():
     print("Model outdir", out_dir)
     print("Training omni".upper())
 
-    data_generator = DataLoader(interleaved_dir=interleaved_dir,
-                                speech_dir=speech_dir,
-                                text_dir=text_dir)
 
     gpt_train(model,
               get_batch=data_generator.get_batch,

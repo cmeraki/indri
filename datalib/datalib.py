@@ -61,16 +61,19 @@ class Dataset:
         self.metadata_path = self.local_path / ANNOTATIONS / 'metadata.jsonl'
         self.metadata_writer = None
 
-        self.hf_token = os.getenv('HF_TOKEN_CMERAKI')
+        self.hf_token = os.getenv('HF_TOKEN')
         self.hf_user = 'cmeraki'
         
         self.ids = None
 
-    def download(self, hf_repo_id=None):
+    def download(self, hf_repo_id=None, audio=True):
         if hf_repo_id is None:
             hf_repo_id = self.repo_id
 
         for name in self.dirs:
+            if (name =='audio') and (audio == False):
+                continue
+
             tar_name = f'{name}.tar'
             hf_hub_download(repo_id=f'{self.hf_user}/{hf_repo_id}',
                             token=self.hf_token,
@@ -161,6 +164,46 @@ class Dataset:
     def close(self):
         if self.metadata_writer:
             self.metadata_writer.close()
+
+
+    def tokenize(self):
+        import audiotoken
+        from glob import glob
+        import numpy as np
+        from tqdm import tqdm
+        from datalib.tokenlib import (AUDIO,
+                                    SEMANTIC,
+                                    ACOUSTIC,
+                                    TEXT,
+                                    get_tokenizer)
+        
+        dataset = Dataset(repo_id=self.repo_id)
+        path = str(dataset.dirs[AUDIO] / f"*.{self.audio_format}")
+        print(path)
+        files = glob(path)
+
+        print("nfiles", len(files))
+        print("from", dataset.dirs[AUDIO], "to", dataset.dirs[SEMANTIC])
+
+        tokenizer = audiotoken.AudioToken(tokenizer=audiotoken.Tokenizers.semantic_s, device='cuda:0')
+        tokenizer.encode_batch_files(audio_files=files,
+                                    outdir=dataset.dirs[SEMANTIC],
+                                    num_workers=4,
+                                    batch_size=32)
+
+        tokenizer = audiotoken.AudioToken(tokenizer=audiotoken.Tokenizers.acoustic, device='cuda:0')
+        tokenizer.encode_batch_files(audio_files=files,
+                                    outdir=dataset.dirs[ACOUSTIC],
+                                    num_workers=4,
+                                    batch_size=32)
+
+
+        tokenizer = get_tokenizer(TEXT, device='cpu')
+        for item in tqdm(dataset.iter_dataset(), desc='iterating...'):
+            tokens = tokenizer.encode(item.raw_text)
+            token_path = dataset.get_absolute_path(item.text_tokens)
+            np.save(token_path, tokens)
+
 
 
 def create_tar(dir, tar_path):

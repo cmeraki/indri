@@ -9,8 +9,7 @@ from tqdm import tqdm
 
 def stream_samples(hf_repo_id):
     dataset = load_dataset(hf_repo_id,
-                           split='train',
-                           streaming=True)
+                           split='train')
 
     return iter(dataset)
 
@@ -43,53 +42,21 @@ def make_dataset():
                         )
 
         dataset.add_sample(sample)
+    
+    dataset.tokenize()
+    dataset.upload()
 
-
-
-def tokenize():
-    import audiotoken
-    from datalib.tokenlib import (AUDIO,
-                                  SEMANTIC,
-                                  ACOUSTIC,
-                                  TEXT,
-                                  get_tokenizer)
-    import numpy as np
-
-    dataset = Dataset(repo_id='expresso')
-    from glob import glob
-    path = str(dataset.dirs[AUDIO] / "*.wav")
-    print(path)
-    files = glob(path)
-
-    print("nfiles", len(files))
-    print("from", dataset.dirs[AUDIO], "to", dataset.dirs[SEMANTIC])
-
-    tokenizer = audiotoken.AudioToken(tokenizer=audiotoken.Tokenizers.semantic_s, device='cuda:0')
-    tokenizer.encode_batch_files(audio_files=files,
-                                 outdir=dataset.dirs[SEMANTIC],
-                                 num_workers=4,
-                                 batch_size=32)
-
-    tokenizer = audiotoken.AudioToken(tokenizer=audiotoken.Tokenizers.acoustic, device='cuda:0')
-    tokenizer.encode_batch_files(audio_files=files,
-                                 outdir=dataset.dirs[ACOUSTIC],
-                                 num_workers=4,
-                                 batch_size=32)
-
-
-    tokenizer = get_tokenizer(TEXT, device='cpu')
-    for item in tqdm(dataset.iter_dataset(), desc='iterating...'):
-        tokens = tokenizer.encode(item.raw_text)
-        token_path = dataset.get_absolute_path(item.text_tokens)
-        np.save(token_path, tokens)
 
 def test_dataset():
-    dataset = Dataset(repo_id='jenny')
+    dataset = Dataset(repo_id='expresso')
     for item in tqdm(dataset.iter_dataset()):
         pass
 
+def upload_dataset():
+    dataset = Dataset(repo_id='expresso')
+    dataset.upload()
+
 
 make_dataset()
-tokenize()
-# test_dataset()
-
+test_dataset()
+upload_dataset()
