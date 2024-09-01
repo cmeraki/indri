@@ -57,7 +57,7 @@ class DataLoader:
         self.text_tokenizer = get_tokenizer(type=TEXT, device='cpu')
 
         self.load_parallel_data(self.dataset_dirs)
-        # self.interleaved_files = self.load_interleaved(self.interleaved_dirs)
+        self.interleaved_files = self.load_interleaved(self.interleaved_dirs)
 
 
         self.tts_start_token = self.text_tokenizer.encode('[TTS]')
@@ -196,9 +196,9 @@ class DataLoader:
 
         methods = [self.get_tokens_speech,
                    self.get_tokens_text,
-                   #self.get_asr,
+                   self.get_asr,
                    self.get_tts,
-                   #self.get_tokens_continue,
+                   self.get_tokens_continue,
                    ]
 
         for i in range(batch_size):
