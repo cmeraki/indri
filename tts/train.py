@@ -224,7 +224,7 @@ def train():
     from common import cache_dir
 
     data_dir = Path(os.path.join(cache_dir, 'romit', 'data'))
-    out_dir = Path(os.path.join(cache_dir, 'romit', 'models', 'large'))
+    out_dir = Path(os.path.join(cache_dir, 'romit', 'models', 'medium'))
 
     print("DATA DIR: ", data_dir)
     print("OUT DIR: ", out_dir)

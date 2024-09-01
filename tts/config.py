@@ -72,7 +72,7 @@ class Config:
 
     print('GAP tokens =', VOCAB_SIZE - max(STOP_TOKEN.values()))
 
-    MODEL_TYPE = 'gpt2-large'
+    MODEL_TYPE = 'gpt2-medium'
 
     # These are defined based on the source
     MAX_SOURCE_TOKENS = {
