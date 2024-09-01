@@ -184,20 +184,22 @@ def generate_long(
     return target_tokens, all_source_toks, all_gen_toks
 
 class AudioSemantic:
-    def __init__(self, size='125m'):
-        # snapshot_download(f'cmeraki/tts_en_xl_{size}', local_dir=model_dir)
-        # snapshot_download(f'cmeraki/tts_xl_30k_long_125m_en', local_dir=model_dir)
+    def __init__(self, size='125m', custom_path: str = None):
 
         model_dir = f'{cache_dir}/models/tts_xl_30k_long_125m_en/'
+        snapshot_download(f'cmeraki/tts_xl_30k_long_125m_en', local_dir=model_dir)
         self.text_semantic_model = load_model(path=f'{model_dir}/text_semantic/gpt_last.pt')
-        self.semantic_acoustic_model_new = load_model(path=f'{model_dir}/semantic_acoustic/gpt_last.pt')
 
         model_dir = f'{cache_dir}/models/tts_en_xl_{size}/'
+        snapshot_download(f'cmeraki/tts_en_xl_{size}', local_dir=model_dir)
         self.semantic_acoustic_model = load_model(path=f'{model_dir}/semantic_acoustic/gpt_last.pt')
 
         self.text_tokenizer = get_tokenizer(TEXT, device=DEVICE)
         self.acoustic_tokenizer = get_tokenizer(ACOUSTIC, device=DEVICE)
         self.device = DEVICE
+
+        # self.semantic_acoustic_model_new = load_model(path=f'{model_dir}/semantic_acoustic/gpt_last.pt')
+        self.semantic_acoustic_model_new = load_model(path=f'{custom_path}')
 
     def text_to_semantic_long(self, text, **generate_kwargs):
         """
