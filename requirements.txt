@@ -7,3 +7,4 @@ soundfile
 librosa
 gradio
 audiotoken
+datasets

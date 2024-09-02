@@ -113,6 +113,7 @@ class Dataset:
             upload_file(repo_id=f'{self.hf_user}/{hf_repo_id}',
                         repo_type="dataset",
                         path_or_fileobj=tar_fname,
+                        repo_type="dataset",
                         path_in_repo=f'{name}.tar',
                         token=self.hf_token)
 
