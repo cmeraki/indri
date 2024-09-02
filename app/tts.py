@@ -1,20 +1,15 @@
 import gradio as gr
 import numpy as np
-from audiotoken import AudioToken, Tokenizers
 
 from tts.long_infer import AudioSemantic
-from tts.infer import AudioSemantic as VanillaAudioSemantic
+from tts.config import Config as cfg, TEXT, SEMANTIC, ACOUSTIC
 
 ttslib = AudioSemantic()
-vanilla_ttslib = VanillaAudioSemantic()
-
-acoustic_tokenizer = AudioToken(Tokenizers.acoustic, device='cuda:0')
-semantic_tokenizer = AudioToken(Tokenizers.semantic_s, device='cuda:0')
 prev_speaker = None
-sa_prompt_toks_dict = None
-ts_prompt_toks_dict = None
 
 def load_prompt(speaker):
+    print(f'Loading prompt for {speaker}')
+
     if speaker == 'jenny':
         toks = np.load('prompts/jenny_short/tokens.npz')
     elif speaker == 'lj':
@@ -45,17 +40,28 @@ def echo(text, speaker):
 
     print(f'Generating semantic tokens {text}')
 
+    generate_kwargs = {
+        'max_source_tokens': 32,
+        'source_overlap': 16,
+        'temperature': 0.99,
+        'max_new_tokens': cfg.BLOCK_SIZE[TEXT],
+        'prompt_dict': ts_prompt_toks_dict
+    }
+
     sem_toks = ttslib.text_to_semantic_long(
         text,
-        max_source_tokens=32,
-        source_overlap=16,
-        temperature=0.99,
-        max_new_tokens=1024,
+        generate_kwargs=generate_kwargs,
         prompt_dict=ts_prompt_toks_dict
     )
     print(f'Semantic tokens shape: {sem_toks.shape}')
 
-    print(f'Generating audio tokens {sem_toks.shape}')
+    generate_kwargs = {
+        'max_source_tokens': 300,
+        'source_overlap': 150,
+        'temperature': 0.95,
+        'max_new_tokens': cfg.BLOCK_SIZE[SEMANTIC],
+        'prompt_dict': sa_prompt_toks_dict
+    }
 
     aud = ttslib.semantic_to_audio_long(
         sem_toks,

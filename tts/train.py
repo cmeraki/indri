@@ -115,8 +115,8 @@ class DataLoader:
 
         for i in range(batch_size):
             f = some_filenames[i]
-            source_arr = np.load(self.files[source][f])
-            target_arr = np.load(self.files[target][f])
+            source_arr = np.load(self.files[source][f]).astype(np.int64)
+            target_arr = np.load(self.files[target][f]).astype(np.int64)
 
             source_arr = self.prepare_source(source_arr, 
                                              source=self.source, 
@@ -224,7 +224,7 @@ def train():
     from common import cache_dir
 
     data_dir = Path(os.path.join(cache_dir, 'romit', 'data'))
-    out_dir = Path(os.path.join(cache_dir, 'romit', 'models', 'large'))
+    out_dir = Path(os.path.join(cache_dir, 'romit', 'models', 'medium'))
 
     print("DATA DIR: ", data_dir)
     print("OUT DIR: ", out_dir)
