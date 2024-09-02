@@ -6,12 +6,10 @@ from huggingface_hub import snapshot_download
 
 from encodec.utils import save_audio
 
-from common import cache_dir
-from common import Config as cfg
-from common import SEMANTIC, TEXT, ACOUSTIC, DEVICE, ctx, seed
-from datalib.tokenlib import get_tokenizer
 from tts.gpt2_model import get_model
 from tts.utils import read_audio_file
+from datalib.tokenlib import get_tokenizer
+from tts.config import Config as cfg, SEMANTIC, TEXT, ACOUSTIC, DEVICE, ctx, seed, cache_dir
 
 def load_model(path):
     print(f'Loading model from {path}')
@@ -35,12 +33,12 @@ def extract_new_tokens(y, target):
 
     return y
 
-def generate(model, source, target, source_tokens, device, **generate_kwargs):
+def generate(model, source, target, source_tokens, device, generate_kwargs):
 
     temperature = generate_kwargs.get("temperature", 0.9)
     top_k = generate_kwargs.get("top_k", 100)
-    max_new_tokens = generate_kwargs.get("max_new_tokens", 3072)
-    max_source_tokens = generate_kwargs.get("max_source_tokens", 256)
+    max_new_tokens = generate_kwargs.get("max_new_tokens", cfg.BLOCK_SIZE[source])
+    max_source_tokens = generate_kwargs.get("max_source_tokens", cfg.MAX_SOURCE_TOKENS[source])
 
     source_tokens = source_tokens + cfg.OFFSET[source]
     source_tokens = np.reshape(source_tokens, -1)
@@ -74,15 +72,17 @@ def generate_long(
         target,
         source_tokens,
         device,
-        **generate_kwargs
+        generate_kwargs
     ):
 
     prompt_dict = generate_kwargs.get("prompt_dict")
     temperature = generate_kwargs.get("temperature", 0.9)
     top_k = generate_kwargs.get("top_k", 100)
-    max_source_tokens = generate_kwargs.get("max_source_tokens", 256)
+    max_source_tokens = generate_kwargs.get("max_source_tokens", cfg.MAX_SOURCE_TOKENS[source])
     source_overlap = generate_kwargs.get("source_overlap", 128)
-    max_new_tokens = generate_kwargs.get("max_new_tokens", 3072)
+    max_new_tokens = generate_kwargs.get("max_new_tokens", cfg.BLOCK_SIZE[source])
+
+    print(f'Max source tokens: {max_source_tokens}, source overlap: {source_overlap}, max new tokens: {max_new_tokens}')
 
     all_source_toks = []
     all_gen_toks = []
@@ -201,7 +201,7 @@ class AudioSemantic:
         # self.semantic_acoustic_model_new = load_model(path=f'{model_dir}/semantic_acoustic/gpt_last.pt')
         self.semantic_acoustic_model_new = load_model(path=f'{custom_path}')
 
-    def text_to_semantic_long(self, text, **generate_kwargs):
+    def text_to_semantic_long(self, text, generate_kwargs=None):
         """
         Convert text to semantic tokens
         Split text by <period> and tokenize each sentence
@@ -221,14 +221,14 @@ class AudioSemantic:
                 target=SEMANTIC,
                 source_tokens=np.array(self.text_tokenizer.encode(sentence)),
                 device=self.device,
-                **generate_kwargs
+                generate_kwargs=generate_kwargs
             )
             semantic_tokens.extend(sem_toks)
 
         return np.array(semantic_tokens).astype(np.int64)
 
 
-    def semantic_to_audio_long(self, tokens, retries=5, model=None, **generate_kwargs):
+    def semantic_to_audio_long(self, tokens, retries=5, model=None, generate_kwargs=None):
         for i in range(retries):
             try:
                 acoustic_tokens, _, _ = generate_long(
@@ -237,7 +237,7 @@ class AudioSemantic:
                     target=ACOUSTIC,
                     source_tokens=tokens,
                     device=self.device,
-                    **generate_kwargs
+                    generate_kwargs=generate_kwargs
                 )
                 break
             except Exception as e:
@@ -251,14 +251,14 @@ class AudioSemantic:
         return wav.cpu()
 
 
-    def semantic_to_audio(self, tokens, model=None, **generate_kwargs):
+    def semantic_to_audio(self, tokens, model=None, generate_kwargs=None):
         acoustic_tokens = generate(
             model=model,
             source=SEMANTIC,
             target=ACOUSTIC,
             source_tokens=tokens,
             device=self.device,
-            **generate_kwargs
+            generate_kwargs=generate_kwargs
         )
 
         wav = self.acoustic_tokenizer.decode(torch.tensor(acoustic_tokens))
@@ -269,7 +269,7 @@ class AudioSemantic:
         if wav:
             waveform = read_audio_file(wav)
 
-        acoustic_tokens = self.audio_to_semantic.encode(waveform)
+        acoustic_tokens = self.acoustic_tokenizer.encode(waveform)
         return acoustic_tokens
 
 def normalize_text(text):

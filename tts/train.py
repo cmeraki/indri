@@ -115,8 +115,8 @@ class DataLoader:
 
         for i in range(batch_size):
             f = some_filenames[i]
-            source_arr = np.load(self.files[source][f])
-            target_arr = np.load(self.files[target][f])
+            source_arr = np.load(self.files[source][f]).astype(np.int64)
+            target_arr = np.load(self.files[target][f]).astype(np.int64)
 
             source_arr = self.prepare_source(source_arr, 
                                              source=self.source, 
