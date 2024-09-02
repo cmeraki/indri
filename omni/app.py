@@ -15,9 +15,9 @@ omni_model = convert_to_hf(path=f'{local_dir}/omni.pt', device=DEVICE)
 text_tokenizer = get_tokenizer(TEXT, device='cpu')
 acoustic_tokenizer = get_tokenizer(ACOUSTIC, device=DEVICE)
 
-# local_dir = f'{cache_dir}/models/semantic_acoustic'
-# snapshot_download(f'cmeraki/semantic_acoustic', local_dir=local_dir)
-semantic_acoustic_model = convert_to_hf(path=f'/home/.cache/indri/romit/models/gpt_small.pt', device=DEVICE)
+local_dir = f'{cache_dir}/models/tts_xl_30k_long_125m_en/semantic_acoustic/'
+snapshot_download(f'cmeraki/tts_xl_30k_long_125m_en/semantic_acoustic/', local_dir=local_dir)
+semantic_acoustic_model = convert_to_hf(path=f'{local_dir}/gpt_last.pt', device=DEVICE)
 
 def decorate(tokens, type):
     tokens = tokens + cfg.OFFSET[type]
