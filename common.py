@@ -21,7 +21,7 @@ rng_state = torch.random.get_rng_state()
 
 print(f'RNG state: {rng_state}')
 
-DEVICE = 'cuda:0'
+DEVICE = 'cuda:1'
 dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16'
 
 device_type = 'cuda' if 'cuda' in DEVICE else 'cpu'
@@ -85,6 +85,13 @@ class Config:
 
     OMNI_STOP_TOKEN = VOCAB_SIZE - 1
 
-    
+    # These are defined based on the source
+    MAX_SOURCE_TOKENS = {
+        TEXT: 256,
+        SEMANTIC: 768
+    }
 
-    
+    BLOCK_SIZE = {
+        TEXT: 1024,
+        SEMANTIC: 3072
+    }

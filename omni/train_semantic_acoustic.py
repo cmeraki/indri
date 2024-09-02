@@ -6,11 +6,10 @@ import numpy as np
 from tqdm import tqdm
 from pathlib import Path
 
-from tts.config import Config as cfg
-from tts.config import TEXT, SEMANTIC, ACOUSTIC, DEVICE
+from common import Config as cfg, DEVICE, TEXT, SEMANTIC, ACOUSTIC
 
-from tts.gpt2_trainer import train as gpt_train
-from tts.gpt2_model import get_model
+from omni.gpt2_trainer import train as gpt_train
+from omni.gpt2_model import get_model
 
 print(cfg.__dict__)
 

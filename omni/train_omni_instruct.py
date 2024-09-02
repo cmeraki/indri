@@ -5,8 +5,8 @@ import random
 import numpy as np
 from pathlib import Path
 
-from tts.gpt2_trainer import train as gpt_train
-from tts.gpt2_model import get_model, GPT
+from omni.gpt2_trainer import train as gpt_train
+from omni.gpt2_model import get_model, GPT
 from common import DEVICE
 from common import Config as cfg
 import json
