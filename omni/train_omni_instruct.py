@@ -1,5 +1,3 @@
-import os
-import glob
 import json
 import torch
 import random
@@ -17,14 +15,6 @@ import configs.training_omni as training_cfg
 
 
 print(cfg.__dict__)
-
-def decorate(tokens, type):
-    tokens = tokens + cfg.OFFSET[type]
-    tokens = np.hstack([cfg.INFER_TOKEN[type],
-                        tokens,
-                        cfg.STOP_TOKEN[type]])
-    return tokens
-
 
 def replace_consecutive(arr):
     mask = np.concatenate(([True], arr[1:] != arr[:-1]))
@@ -99,11 +89,11 @@ class DataLoader:
 
         self.metadata = metadata
 
-    def load_interleaved(self, data_dir):
+    def load_interleaved(self, data_dir: list[Path]):
 
         files = []
         for dir in data_dir:
-            files.extend(glob.glob(f'{dir}/*.json'))
+            files.extend(list(dir.glob('**/*.json')))
 
         print("Num interleaved files", len(files))
 
@@ -210,6 +200,7 @@ class DataLoader:
         speech_tokens = np.load(self.get_tokens_path(id, SEMANTIC)).reshape(-1) + cfg.OFFSET[SEMANTIC]
         speaker_id = self.metadata[id]['speaker_id']
         speaker_id = self.speaker_id_to_text(speaker_id)
+        speech_tokens = replace_consecutive(speech_tokens)
 
         tokens = np.hstack([
             self.text_modality_token,
@@ -229,6 +220,7 @@ class DataLoader:
         id = random.choice(self.ids[split])
         text_tokens = self.get_text_tokens_for_id(id) + cfg.OFFSET[TEXT]
         speech_tokens = np.load(self.get_tokens_path(id, SEMANTIC)).reshape(-1) + cfg.OFFSET[SEMANTIC]
+        speech_tokens = replace_consecutive(speech_tokens)
 
         tokens = np.hstack([
             self.semantic_modality_token,
@@ -240,6 +232,26 @@ class DataLoader:
         ])
         return tokens
 
+    def get_valid_sequence(self, split):
+        methods = [
+            self.get_tokens_speech,
+            self.get_tokens_text,
+            self.get_asr,
+            self.get_tts,
+            self.get_tokens_continue,
+        ]
+
+        while True:
+            try:
+                method = random.choice(methods)
+                yield method(split)
+            except EOFError as e:
+                pass
+            except FileNotFoundError as e:
+                pass
+            except Exception as e:
+                print(e)
+
     def load_batch(self, split, block_size, batch_size):
         x = np.zeros(shape=(batch_size, block_size), dtype=np.int64)
         y = np.zeros(shape=(batch_size, block_size), dtype=np.int64)
@@ -249,25 +261,32 @@ class DataLoader:
         x = x + self.stop_token
         y = y + self.stop_token
 
-        methods = [self.get_tokens_speech,
-                   self.get_tokens_text,
-                   self.get_asr,
-                   self.get_tts,
-                   self.get_tokens_continue,
-                   ]
+        i = 0
+        start_idx = 0
+        end_idx = 0
 
-        for i in range(batch_size):
-            method = random.choice(methods)
-            tokens = method(split)
-            index = random.randint(0, max(len(tokens) - block_size, 0))
+        for tokens in self.get_valid_sequence(split):
+            new_toks = block_size - end_idx
+            _x = tokens[:new_toks]
+            _y = tokens[1:new_toks + 1]
 
-            _x = tokens[index:block_size]
-            _y = tokens[index + 1:block_size + 1]
+            if len(_x) != len(_y):
+                _y = np.hstack([_y, self.stop_token])
 
-            # print(method, _x.shape)
+            end_idx = start_idx + len(_x)
 
-            x[i][:len(_x)] = _x
-            y[i][:len(_y)] = _y
+            x[i][start_idx:end_idx] = _x
+            y[i][start_idx:end_idx] = _y
+
+            start_idx = end_idx
+
+            if end_idx < block_size:
+                continue
+
+            i += 1
+
+            if i == batch_size:
+                break
 
         return x, y
 
@@ -291,16 +310,17 @@ def train_omni():
     from datetime import datetime
 
     today = datetime.today().strftime('%y%m%d-%H%M%S')
-    out_dir = Path(f'{CACHE_DIR}/models/{today}/omni_mixed_large/')
+    out_dir = Path(f'{CACHE_DIR}/models/omni_tasks_large/')
 
-    interleaved_dir = [os.path.join(CACHE_DIR, 'tinystories_omni/')]
+    interleaved_dir = [Path(f'{CACHE_DIR}/tinystories_omni/')]
 
     datasets_dirs = [
-        os.path.join(CACHE_DIR, 'jenny/'),
-        os.path.join(CACHE_DIR, 'expresso/'),
-        # os.path.join(CACHE_DIR, 'mls_eng_10k/'),
-        # os.path.join(CACHE_DIR, 'data', 'peoples_speech_tokens/'),
-        # os.path.join(CACHE_DIR, 'gs_xl_en_tokens/')
+        Path(f'{CACHE_DIR}/jenny/'),
+        Path(f'{CACHE_DIR}/expresso/'),
+        Path(f'{CACHE_DIR}/mls_eng_10k/'),
+        Path(f'{CACHE_DIR}/data/peoples_speech_tokens/'),
+        Path(f'{CACHE_DIR}/data/gs_xl_en_tokens/'),
+        Path(f'{CACHE_DIR}/hifi_tts'),
     ]
 
     data_generator = DataLoader(

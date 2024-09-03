@@ -1,5 +1,4 @@
-import os
-import glob
+import json
 import torch
 import random
 import numpy as np
@@ -19,23 +18,25 @@ from datalib.tokenlib import get_tokenizer
 
 print(cfg.__dict__)
 
+def replace_consecutive(arr):
+    mask = np.concatenate(([True], arr[1:] != arr[:-1]))
+    return arr[mask]
+
 class DataLoader:
     def __init__(
         self,
-        data_dir,
+        data_dirs,
         max_source_tokens=256,
         prompt_length=0,
         max_files=None
     ):
 
-        self.data_dir = data_dir
+        self.data_dirs = data_dirs
         self.max_files = max_files
         self.max_source_tokens = max_source_tokens
         self.prompt_length = prompt_length
         self.prompting = False
         self.types = [SEMANTIC, ACOUSTIC]
-
-        self.files, self.filenames = self.load_files()
 
         self.text_tokenizer = get_tokenizer(type=TEXT, device='cpu')
         self.convert_token = self.text_tokenizer.encode(cfg.TASK_TOKENS[CONVERT])
@@ -46,34 +47,40 @@ class DataLoader:
 
         print(f'Training semantic acoustic model with max source tokens {max_source_tokens} and max files {max_files}')
 
-    def load_files(self):
-        files = {}
-        filenames = None
+        self.load_parallel_data(self.data_dirs)
 
-        for type in [SEMANTIC, ACOUSTIC]:
-            files[type] = {}
-            file_iter = tqdm(glob.iglob(f"{self.data_dir}/{type}/**/*.npy", recursive=True), desc=f'reading {type}')
-            for f in file_iter:
-                files[type][Path(f).name] = Path(f)
-                if self.max_files:
-                    if len(files[type]) >= self.max_files:
-                        break
+    def speaker_id_to_text(self, id, dataset=None):
+        if dataset:
+            text = f'[spkr_{dataset}_{id}]'
+        else:
+            if id is not None and len(id) > 0:
+                text = f'[spkr_{id}]'
+            else:
+                text = '[spkr_unk]'
+        
+        return self.text_tokenizer.encode(text)
 
-            if not filenames:
-                filenames = set(files[type].keys())
+    def load_parallel_data(self, dirs):
+        metadata = {}
 
-            filenames = filenames.intersection(set(files[type].keys()))
+        for dir in dirs:
+            metadata_path = Path(dir, 'annotation', 'metadata.jsonl')
 
-        filenames = list(filenames)
+            for line in open(metadata_path):
+                _metadata = json.loads(line.strip())
+                _metadata['dir'] = dir
+                metadata[_metadata['id']] = _metadata
 
-        print(f"Num files: {len(filenames)}")
+        print("Num metadata lines: ", len(metadata))
 
-        filenames = {
-            'train': filenames[1000:],
-            'val': filenames[:1000]
+        self.ids = list(metadata.keys())
+        random.shuffle(self.ids)
+        self.ids = {
+            'train' : self.ids[1000:],
+            'val' : self.ids[:1000],
         }
 
-        return files, filenames
+        self.metadata = metadata
 
     @staticmethod
     def codebook_encoding(
@@ -88,47 +95,62 @@ class DataLoader:
         flat_arr = arr.reshape(c * n, order='F')
         return flat_arr
 
-    def get_semantic_acoustic_translation(self, split):
-        filename = random.choice(self.filenames[split])
+    def get_tokens_path(self, id, type):
+        sample = self.metadata[id]
+        return Path(sample['dir'], sample[f'{type}_tokens'].replace('.opus', '').replace('.flac', ''))
 
-        source_arr = np.load(self.files[SEMANTIC][filename]).astype(np.int64)
+    def get_semantic_acoustic_translation(self, split):
+        id = random.choice(self.ids[split])
+
+        source_arr = np.load(self.get_tokens_path(id, SEMANTIC)).astype(np.int64)
         source_arr = source_arr + cfg.OFFSET[SEMANTIC]
         source_arr = np.reshape(source_arr, -1)
+        source_arr = replace_consecutive(source_arr)
 
-        target_arr = np.load(self.files[ACOUSTIC][filename]).astype(np.int64)
+        target_arr = np.load(self.get_tokens_path(id, ACOUSTIC)).astype(np.int64)
         target_arr = target_arr[:cfg.coarse_codebooks]
         target_arr = DataLoader.codebook_encoding(target_arr, cfg.per_codebook_size)
         target_arr = np.reshape(target_arr, -1)
         target_arr = target_arr + cfg.OFFSET[ACOUSTIC]
 
+        speaker_id = self.metadata[id]['speaker_id']
+        speaker_id = self.speaker_id_to_text(speaker_id)
+
         return np.hstack([
             self.semantic_modality_token,
             source_arr,
             self.convert_token,
+            speaker_id,
             self.acoustic_modality_token,
-            target_arr
+            target_arr,
+            self.stop_token
         ])
 
 
     def get_acoustic_semantic_translation(self, split):
-        filename = random.choice(self.filenames[split])
+        id = random.choice(self.ids[split])
 
-        source_arr = np.load(self.files[ACOUSTIC][filename]).astype(np.int64)
+        source_arr = np.load(self.get_tokens_path(id, ACOUSTIC)).astype(np.int64)
         source_arr = source_arr[:cfg.coarse_codebooks]
         source_arr = DataLoader.codebook_encoding(source_arr, cfg.per_codebook_size)
         source_arr = np.reshape(source_arr, -1)
         source_arr = source_arr + cfg.OFFSET[ACOUSTIC]
 
-        target_arr = np.load(self.files[SEMANTIC][filename]).astype(np.int64)
+        target_arr = np.load(self.get_tokens_path(id, SEMANTIC)).astype(np.int64)
         target_arr = target_arr + cfg.OFFSET[SEMANTIC]
         target_arr = np.reshape(target_arr, -1)
+        target_arr = replace_consecutive(target_arr)
+        speaker_id = self.metadata[id]['speaker_id']
+        speaker_id = self.speaker_id_to_text(speaker_id)
 
         return np.hstack([
             self.acoustic_modality_token,
             source_arr,
             self.convert_token,
+            speaker_id,
             self.semantic_modality_token,
-            target_arr
+            target_arr,
+            self.stop_token
         ])
 
     def get_semantic_acoustic_continue(self, split):
@@ -138,9 +160,9 @@ class DataLoader:
         pass
 
     def get_acoustic_acoustic(self, split):
-        filename = random.choice(self.filenames[split])
+        id = random.choice(self.ids[split])
 
-        source_arr = np.load(self.files[ACOUSTIC][filename]).astype(np.int64)
+        source_arr = np.load(self.get_tokens_path(id, ACOUSTIC)).astype(np.int64)
         source_arr = source_arr[:cfg.coarse_codebooks]
         source_arr = DataLoader.codebook_encoding(source_arr, cfg.per_codebook_size)
         source_arr = np.reshape(source_arr, -1)
@@ -148,30 +170,61 @@ class DataLoader:
 
         random_cut = random.randint(0, len(source_arr) - 1)
 
+        speaker_id = self.metadata[id]['speaker_id']
+        speaker_id = self.speaker_id_to_text(speaker_id)
+
         return np.hstack([
             self.acoustic_modality_token,
             source_arr[:random_cut],
             self.continue_token,
+            speaker_id,
             self.acoustic_modality_token,
             source_arr[random_cut + 1:],
+            self.stop_token
         ])
 
     def get_semantic_semantic(self, split):
-        filename = random.choice(self.filenames[split])
+        id = random.choice(self.ids[split])
 
-        source_arr = np.load(self.files[SEMANTIC][filename]).astype(np.int64)
+        source_arr = np.load(self.get_tokens_path(id, SEMANTIC)).astype(np.int64)
         source_arr = source_arr + cfg.OFFSET[SEMANTIC]
         source_arr = np.reshape(source_arr, -1)
+        source_arr = replace_consecutive(source_arr)
 
         random_cut = random.randint(0, len(source_arr) - 1)
+
+        speaker_id = self.metadata[id]['speaker_id']
+        speaker_id = self.speaker_id_to_text(speaker_id)
 
         return np.hstack([
             self.semantic_modality_token,
             source_arr[:random_cut],
             self.continue_token,
+            speaker_id,
             self.semantic_modality_token,
             source_arr[random_cut + 1:],
+            self.stop_token
         ])
+
+    def get_valid_sequence(self, split):
+        task_methods = [
+            self.get_semantic_acoustic_translation,
+            self.get_acoustic_semantic_translation,
+            self.get_acoustic_acoustic,
+            self.get_semantic_semantic,
+        ]
+
+        while True:
+            try:
+                method = random.choice(task_methods)
+                yield method(split)
+            except EOFError as e:
+                pass
+            except FileNotFoundError as e:
+                pass
+            except Exception as e:
+                print(e)
+
 
     def load_batch(self, split, block_size, batch_size):
         x = np.zeros(shape=(batch_size, block_size), dtype=np.int64)
@@ -182,24 +235,31 @@ class DataLoader:
         x = x + self.stop_token
         y = y + self.stop_token
 
-        task_methods = [
-            self.get_semantic_acoustic_translation,
-            self.get_acoustic_semantic_translation,
-            self.get_acoustic_acoustic,
-            self.get_semantic_semantic,
-        ]
+        i = 0
+        start_idx = 0
+        end_idx = 0
 
-        for i in range(batch_size):
-            method = random.choice(task_methods)
-            # pdb.set_trace()
-            tokens = method(split)
-            # pdb.set_trace()
+        for tokens in self.get_valid_sequence(split):
+            new_toks = block_size - end_idx
+            _x = tokens[:new_toks]
+            _y = tokens[1:new_toks + 1]
+            if len(_x) != len(_y):
+                _y = np.hstack([_y, self.stop_token])
 
-            _x = tokens[:block_size]
-            _y = tokens[1:block_size + 1]
+            end_idx = start_idx + len(_x)
 
-            x[i][:len(_x)] = _x
-            y[i][:len(_y)] = _y
+            x[i][start_idx:end_idx] = _x
+            y[i][start_idx:end_idx] = _y
+
+            start_idx = end_idx
+
+            if end_idx < block_size:
+                continue
+
+            i += 1
+
+            if i == batch_size:
+                break
 
         return x, y
 
@@ -220,10 +280,17 @@ def train():
     from datetime import datetime
 
     today = datetime.today().strftime('%y%m%d-%H%M%S')
-    data_dir = Path(os.path.join(CACHE_DIR, 'romit', 'data'))
-    out_dir = Path(os.path.join(CACHE_DIR, 'romit', 'models', today, 'semantic_acoustic'))
+    out_dir = Path(f'{CACHE_DIR}/romit/models/semantic_acoustic_tasks_small')
+    data_dirs = [
+        Path(f'{CACHE_DIR}/mls_eng_10k'),
+        Path(f'{CACHE_DIR}/data/peoples_speech_tokens'),
+        Path(f'{CACHE_DIR}/data/gs_xl_en_tokens'),
+        Path(f'{CACHE_DIR}/jenny'),
+        Path(f'{CACHE_DIR}/hifi_tts'),
+        Path(f'{CACHE_DIR}/expresso'),
+    ]
 
-    print("Data dir: ", data_dir)
+    print("Data dirs: ", data_dirs)
     print("Out dir: ", out_dir)
 
     model = get_model(
@@ -237,7 +304,7 @@ def train():
     print(f"Vocab size {cfg.VOCAB_SIZE}")
 
     data_generator = DataLoader(
-        data_dir=data_dir,
+        data_dirs=data_dirs,
         max_source_tokens=training_cfg.MAX_SOURCE_TOKENS,
     )
 
