@@ -31,11 +31,11 @@ def test_prepare(dsname, num):
         sample = prep_method(item)
         print('sample', sample)
 
-def prepare(hfds, split, num, dsname):
+def prepare(dsname, num):
     dataset = Dataset(repo_id=dsname)
     prep_method = get_prepare_method(dsname)
     
-    for item in iter_hf_item(hfds, split, num, streaming=False):
+    for item in iter_hf_item(dsname, num, streaming=False):
         sample = prep_method(item)
         dataset.add_sample(sample)
     
@@ -62,10 +62,8 @@ if __name__ == '__main__':
                      args.num)
         
     elif args.mode == 'prepare':
-        prepare(args.hfds, 
-                args.split, 
-                args.num, 
-                args.dsname)
+        prepare(args.dsname,
+                args.num)
 
     else:
         print("Pass a valid mode")
