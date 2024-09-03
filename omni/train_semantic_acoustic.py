@@ -6,10 +6,16 @@ import numpy as np
 from tqdm import tqdm
 from pathlib import Path
 
-from common import Config as cfg, DEVICE, TEXT, SEMANTIC, ACOUSTIC
+import pdb
 
-from omni.gpt2_trainer import train as gpt_train
+from configs.commons import Config as cfg
+from configs.commons import DEVICE, CACHE_DIR
+from configs.constants import *
+import configs.training_semantic_acoustic as training_cfg
+
 from omni.gpt2_model import get_model
+from omni.gpt2_trainer import train as gpt_train
+from datalib.tokenlib import get_tokenizer
 
 print(cfg.__dict__)
 
@@ -17,34 +23,38 @@ class DataLoader:
     def __init__(
         self,
         data_dir,
-        source,
-        target,
         max_source_tokens=256,
         prompt_length=0,
         max_files=None
     ):
 
         self.data_dir = data_dir
-        self.source = source
-        self.target = target
         self.max_files = max_files
         self.max_source_tokens = max_source_tokens
         self.prompt_length = prompt_length
         self.prompting = False
+        self.types = [SEMANTIC, ACOUSTIC]
 
         self.files, self.filenames = self.load_files()
 
-        print(f'Training {source} to {target} with max source tokens {max_source_tokens} and max files {max_files}')
+        self.text_tokenizer = get_tokenizer(type=TEXT, device='cpu')
+        self.convert_token = self.text_tokenizer.encode(cfg.TASK_TOKENS[CONVERT])
+        self.continue_token = self.text_tokenizer.encode(cfg.TASK_TOKENS[CONTINUE])
+        self.stop_token = self.text_tokenizer.encode(cfg.STOP_TOKEN)
+        self.semantic_modality_token = self.text_tokenizer.encode(cfg.MODALITY_TOKENS[SEMANTIC])
+        self.acoustic_modality_token = self.text_tokenizer.encode(cfg.MODALITY_TOKENS[ACOUSTIC])
+
+        print(f'Training semantic acoustic model with max source tokens {max_source_tokens} and max files {max_files}')
 
     def load_files(self):
         files = {}
         filenames = None
 
-        for type in [self.source, self.target]:
+        for type in [SEMANTIC, ACOUSTIC]:
             files[type] = {}
             file_iter = tqdm(glob.iglob(f"{self.data_dir}/{type}/**/*.npy", recursive=True), desc=f'reading {type}')
             for f in file_iter:
-                files[type][Path(f).name] = Path(f)             
+                files[type][Path(f).name] = Path(f)
                 if self.max_files:
                     if len(files[type]) >= self.max_files:
                         break
@@ -56,7 +66,7 @@ class DataLoader:
 
         filenames = list(filenames)
 
-        print("Num files", len(filenames))
+        print(f"Num files: {len(filenames)}")
 
         filenames = {
             'train': filenames[1000:],
@@ -77,60 +87,119 @@ class DataLoader:
         arr += i_values.reshape(c, 1)
         flat_arr = arr.reshape(c * n, order='F')
         return flat_arr
-    
 
-    @staticmethod
-    def prepare_source(source_arr, source, max_source_tokens):
-        source_arr = source_arr + cfg.OFFSET[source]
+    def get_semantic_acoustic_translation(self, split):
+        filename = random.choice(self.filenames[split])
+
+        source_arr = np.load(self.files[SEMANTIC][filename]).astype(np.int64)
+        source_arr = source_arr + cfg.OFFSET[SEMANTIC]
         source_arr = np.reshape(source_arr, -1)
-        source_arr = source_arr[0: max_source_tokens]
 
-        return source_arr
+        target_arr = np.load(self.files[ACOUSTIC][filename]).astype(np.int64)
+        target_arr = target_arr[:cfg.coarse_codebooks]
+        target_arr = DataLoader.codebook_encoding(target_arr, cfg.per_codebook_size)
+        target_arr = np.reshape(target_arr, -1)
+        target_arr = target_arr + cfg.OFFSET[ACOUSTIC]
 
-    @staticmethod
-    def prepare_target(target_arr, target):
-        target_arr = target_arr + cfg.OFFSET[target]
+        return np.hstack([
+            self.semantic_modality_token,
+            source_arr,
+            self.convert_token,
+            self.acoustic_modality_token,
+            target_arr
+        ])
 
-        if target == ACOUSTIC:
-            target_arr = target_arr[:cfg.coarse_codebooks]
-            target_arr = DataLoader.codebook_encoding(target_arr, cfg.per_codebook_size)
 
-        target_arr = target_arr.reshape(-1)
+    def get_acoustic_semantic_translation(self, split):
+        filename = random.choice(self.filenames[split])
 
-        return target_arr
+        source_arr = np.load(self.files[ACOUSTIC][filename]).astype(np.int64)
+        source_arr = source_arr[:cfg.coarse_codebooks]
+        source_arr = DataLoader.codebook_encoding(source_arr, cfg.per_codebook_size)
+        source_arr = np.reshape(source_arr, -1)
+        source_arr = source_arr + cfg.OFFSET[ACOUSTIC]
+
+        target_arr = np.load(self.files[SEMANTIC][filename]).astype(np.int64)
+        target_arr = target_arr + cfg.OFFSET[SEMANTIC]
+        target_arr = np.reshape(target_arr, -1)
+
+        return np.hstack([
+            self.acoustic_modality_token,
+            source_arr,
+            self.convert_token,
+            self.semantic_modality_token,
+            target_arr
+        ])
+
+    def get_semantic_acoustic_continue(self, split):
+        pass
+
+    def get_acoustic_semantic_continue(self, split):
+        pass
+
+    def get_acoustic_acoustic(self, split):
+        filename = random.choice(self.filenames[split])
+
+        source_arr = np.load(self.files[ACOUSTIC][filename]).astype(np.int64)
+        source_arr = source_arr[:cfg.coarse_codebooks]
+        source_arr = DataLoader.codebook_encoding(source_arr, cfg.per_codebook_size)
+        source_arr = np.reshape(source_arr, -1)
+        source_arr = source_arr + cfg.OFFSET[ACOUSTIC]
+
+        random_cut = random.randint(0, len(source_arr) - 1)
+
+        return np.hstack([
+            self.acoustic_modality_token,
+            source_arr[:random_cut],
+            self.continue_token,
+            self.acoustic_modality_token,
+            source_arr[random_cut + 1:],
+        ])
+
+    def get_semantic_semantic(self, split):
+        filename = random.choice(self.filenames[split])
+
+        source_arr = np.load(self.files[SEMANTIC][filename]).astype(np.int64)
+        source_arr = source_arr + cfg.OFFSET[SEMANTIC]
+        source_arr = np.reshape(source_arr, -1)
+
+        random_cut = random.randint(0, len(source_arr) - 1)
+
+        return np.hstack([
+            self.semantic_modality_token,
+            source_arr[:random_cut],
+            self.continue_token,
+            self.semantic_modality_token,
+            source_arr[random_cut + 1:],
+        ])
 
     def load_batch(self, split, block_size, batch_size):
-        source = self.source
-        target = self.target
-
-        some_filenames = random.sample(self.filenames[split], batch_size)
         x = np.zeros(shape=(batch_size, block_size), dtype=np.int64)
         y = np.zeros(shape=(batch_size, block_size), dtype=np.int64)
 
         # prepopulate with pad tokens
         # so we don't have to pad later
-        x = x + cfg.STOP_TOKEN[target]
-        y = y + cfg.STOP_TOKEN[target]
+        x = x + self.stop_token
+        y = y + self.stop_token
+
+        task_methods = [
+            self.get_semantic_acoustic_translation,
+            self.get_acoustic_semantic_translation,
+            self.get_acoustic_acoustic,
+            self.get_semantic_semantic,
+        ]
 
         for i in range(batch_size):
-            f = some_filenames[i]
-            source_arr = np.load(self.files[source][f]).astype(np.int64)
-            target_arr = np.load(self.files[target][f]).astype(np.int64)
+            method = random.choice(task_methods)
+            # pdb.set_trace()
+            tokens = method(split)
+            # pdb.set_trace()
 
-            source_arr = self.prepare_source(source_arr, 
-                                             source=self.source, 
-                                             max_source_tokens=self.max_source_tokens)
-            
-            target_arr = self.prepare_target(target_arr, target=self.target)
-            
-            tokens = np.hstack([source_arr, cfg.INFER_TOKEN[target], target_arr]).astype(np.int64)
-            
             _x = tokens[:block_size]
             _y = tokens[1:block_size + 1]
-            
+
             x[i][:len(_x)] = _x
             y[i][:len(_y)] = _y
-            
 
         return x, y
 
@@ -147,92 +216,44 @@ class DataLoader:
 
         return x, y
 
-def train_translator(source, target, data_dir, out_dir, pretrained=None, prompt_length=0):
-    out_dir = os.path.join(out_dir, f'{source}_{target}')
+def train():
+    from datetime import datetime
+
+    today = datetime.today().strftime('%y%m%d-%H%M%S')
+    data_dir = Path(os.path.join(CACHE_DIR, 'romit', 'data'))
+    out_dir = Path(os.path.join(CACHE_DIR, 'romit', 'models', today, 'semantic_acoustic'))
+
+    print("Data dir: ", data_dir)
+    print("Out dir: ", out_dir)
 
     model = get_model(
-        model_type=cfg.MODEL_TYPE,
+        model_type=training_cfg.MODEL_TYPE,
         vocab_size=cfg.VOCAB_SIZE,
-        block_size=cfg.BLOCK_SIZE[source],
+        block_size=training_cfg.BLOCK_SIZE,
         device=DEVICE,
-        path=pretrained
     )
 
-    print(f"Training {cfg.MODEL_TYPE} {source} {target}".upper())
-    print(f"{source}:{target} Vocab size", cfg.VOCAB_SIZE)
-    print("Model outdir", out_dir)
+    print(f"Training {training_cfg.MODEL_TYPE} semantic acoustic")
+    print(f"Vocab size {cfg.VOCAB_SIZE}")
 
     data_generator = DataLoader(
         data_dir=data_dir,
-        source=source,
-        target=target,
-        max_source_tokens=cfg.MAX_SOURCE_TOKENS[source],
-        prompt_length=prompt_length
+        max_source_tokens=training_cfg.MAX_SOURCE_TOKENS,
     )
 
     gpt_train(
         model,
         get_batch=data_generator.get_batch,
         out_dir=out_dir,
-        steps=cfg.STEPS,
-        block_size=cfg.BLOCK_SIZE[source],
-        eval_interval=cfg.EVAL_INTERVAL,
-        eval_steps=cfg.EVAL_STEPS,
-        batch_size=cfg.BATCH_SIZE,
-        grad_accum_steps=cfg.GRAD_ACCUM_STEPS,
+        steps=training_cfg.STEPS,
+        block_size=training_cfg.BLOCK_SIZE,
+        eval_interval=training_cfg.EVAL_INTERVAL,
+        eval_steps=training_cfg.EVAL_STEPS,
+        batch_size=training_cfg.BATCH_SIZE,
+        grad_accum_steps=training_cfg.GRAD_ACCUM_STEPS,
         device=DEVICE
     )
 
-    return out_dir
-
-def download_dataset(local_path):
-    print(f'Downloading dataset at {local_path}')
-
-    import tarfile
-    from huggingface_hub import snapshot_download
-
-    datasets = [
-        # 'cmeraki/expresso',
-        'cmeraki/gs_xl_en_tokens',
-        # 'cmeraki/wavcaps',
-        # 'cmeraki/jenny',
-        # 'cmeraki/peoples_speech_tokens'
-    ]
-    for dataset_name in datasets:
-        if Path(os.path.join(local_path, dataset_name.split('/')[-1], 'success')).exists():
-            print(f"Already downloaded {dataset_name}")
-            continue
-
-        print(f"Downloading data at {local_path}")
-        snapshot_download(
-            dataset_name,
-            repo_type='dataset',
-            local_dir=os.path.join(local_path)
-        )
-
-    # for tar_name in glob.glob(f"{local_path}/**/*.tar"):
-    #     print(tar_name)
-    #     tf = tarfile.open(tar_name)
-    #     tf.extractall(path=os.path.join(local_path))
-    #     tf.close()
-
-    # with open(f'{local_path}/success', 'w') as flag:
-    #     flag.write('y')
-
-def train():
-    from common import cache_dir
-
-    data_dir = Path(os.path.join(cache_dir, 'romit', 'data'))
-    out_dir = Path(os.path.join(cache_dir, 'romit', 'models', 'medium'))
-
-    print("DATA DIR: ", data_dir)
-    print("OUT DIR: ", out_dir)
-
-    # download_dataset(data_dir)
-
-    # train_translator(TEXT, SEMANTIC, data_dir, out_dir, prompt_length=0)
-    train_translator(SEMANTIC, ACOUSTIC, data_dir, out_dir, prompt_length=0)
-    # train_translator(SEMANTIC, TEXT, data_dir, out_dir, prompt_length=0)
 
 if __name__ == '__main__':
     train()

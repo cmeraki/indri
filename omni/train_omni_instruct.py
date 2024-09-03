@@ -1,19 +1,20 @@
+import os
 import glob
+import json
 import torch
 import random
-
 import numpy as np
 from pathlib import Path
 
-from omni.gpt2_trainer import train as gpt_train
-from omni.gpt2_model import get_model, GPT
-from common import DEVICE
-from common import Config as cfg
-import json
-from tqdm import tqdm
-from common import TEXT, SEMANTIC
-from datalib.datalib import Dataset
 from datalib.tokenlib import get_tokenizer
+from omni.gpt2_trainer import train as gpt_train
+from omni.gpt2_model import GPT
+
+from configs.commons import Config as cfg
+from configs.commons import DEVICE, CACHE_DIR
+from configs.constants import *
+import configs.training_omni as training_cfg
+
 
 print(cfg.__dict__)
 
@@ -59,10 +60,11 @@ class DataLoader:
         self.load_parallel_data(self.dataset_dirs)
         self.interleaved_files = self.load_interleaved(self.interleaved_dirs)
 
-
-        self.tts_start_token = self.text_tokenizer.encode('[TTS]')
-        self.asr_start_token = self.text_tokenizer.encode('[ASR]')
-        self.continue_token = self.text_tokenizer.encode('[CONTINUE]')
+        self.convert_token = self.text_tokenizer.encode(cfg.TASK_TOKENS[CONVERT])
+        self.continue_token = self.text_tokenizer.encode(cfg.TASK_TOKENS[CONTINUE])
+        self.stop_token = self.text_tokenizer.encode(cfg.STOP_TOKEN)
+        self.semantic_modality_token = self.text_tokenizer.encode(cfg.MODALITY_TOKENS[SEMANTIC])
+        self.text_modality_token = self.text_tokenizer.encode(cfg.MODALITY_TOKENS[TEXT])
 
 
     def speaker_id_to_text(self, id, dataset=None):
@@ -98,8 +100,10 @@ class DataLoader:
         self.metadata = metadata
 
     def load_interleaved(self, data_dir):
-        files = glob.glob(f'{data_dir}/*.json')
-        files = list(files)
+
+        files = []
+        for dir in data_dir:
+            files.extend(glob.glob(f'{dir}/*.json'))
 
         print("Num interleaved files", len(files))
 
@@ -118,11 +122,26 @@ class DataLoader:
         choices = [random.randint(0, 1) for _ in range(size)]
 
         output = []
+        # for idx in range(size):
+        #     choice = choices[idx]
+        #     modality = modalities[choice]
+        #     tokens = np.asarray(data[modality][idx])
+        #     tokens = decorate(tokens, modality)
+        #     output.extend(tokens)
+
         for idx in range(size):
             choice = choices[idx]
             modality = modalities[choice]
             tokens = np.asarray(data[modality][idx])
-            tokens = decorate(tokens, modality)
+            tokens = tokens + cfg.OFFSET[modality]
+            if idx == 0 and modality == TEXT:
+                tokens = np.hstack([self.text_modality_token, tokens])
+            elif idx == 0 and modality == SEMANTIC:
+                tokens = np.hstack([self.semantic_modality_token, tokens])
+            elif modality == TEXT:
+                tokens = np.hstack([self.continue_token, self.text_modality_token, tokens])
+            elif modality == SEMANTIC:
+                tokens = np.hstack([self.continue_token, self.semantic_modality_token, tokens])
             output.extend(tokens)
 
         output = np.hstack(output)
@@ -147,7 +166,17 @@ class DataLoader:
     def get_tokens_text(self, split):
         id = random.choice(self.ids[split])
         tokens = self.get_text_tokens_for_id(id)
-        tokens = decorate(tokens, TEXT)
+        tokens = tokens + cfg.OFFSET[TEXT]
+
+        random_cut = random.randint(0, len(tokens) - 1)
+        tokens = np.hstack([
+            self.text_modality_token,
+            tokens[:random_cut],
+            self.continue_token,
+            self.text_modality_token,
+            tokens[random_cut:],
+            self.stop_token
+        ])
         return tokens
 
     def get_tokens_speech(self, split):
@@ -156,7 +185,17 @@ class DataLoader:
         tokens = np.load(filename)
         tokens = tokens.reshape(-1)
         tokens = replace_consecutive(tokens)
-        tokens = decorate(tokens, SEMANTIC)
+        tokens = tokens + cfg.OFFSET[SEMANTIC]
+
+        random_cut = random.randint(0, len(tokens) - 1)
+        tokens = np.hstack([
+            self.semantic_modality_token,
+            tokens[:random_cut],
+            self.continue_token,
+            self.semantic_modality_token,
+            tokens[random_cut:],
+            self.stop_token
+        ])
         return tokens
 
     def get_tokens_path(self, id, type):
@@ -171,8 +210,17 @@ class DataLoader:
         speech_tokens = np.load(self.get_tokens_path(id, SEMANTIC)).reshape(-1) + cfg.OFFSET[SEMANTIC]
         speaker_id = self.metadata[id]['speaker_id']
         speaker_id = self.speaker_id_to_text(speaker_id)
-        tokens = [text_tokens, self.tts_start_token, speaker_id, speech_tokens, cfg.STOP_TOKEN[SEMANTIC]]
-        tokens = np.hstack(tokens)
+
+        tokens = np.hstack([
+            self.text_modality_token,
+            text_tokens,
+            self.convert_token,
+            speaker_id,
+            self.semantic_modality_token,
+            speech_tokens,
+            self.stop_token
+        ])
+
         return tokens
     
     def get_asr(self, split):
@@ -181,8 +229,15 @@ class DataLoader:
         id = random.choice(self.ids[split])
         text_tokens = self.get_text_tokens_for_id(id) + cfg.OFFSET[TEXT]
         speech_tokens = np.load(self.get_tokens_path(id, SEMANTIC)).reshape(-1) + cfg.OFFSET[SEMANTIC]
-        tokens = [speech_tokens, self.asr_start_token, text_tokens, cfg.STOP_TOKEN[TEXT]]
-        tokens = np.hstack(tokens)
+
+        tokens = np.hstack([
+            self.semantic_modality_token,
+            speech_tokens,
+            self.convert_token,
+            self.text_modality_token,
+            text_tokens,
+            self.stop_token
+        ])
         return tokens
 
     def load_batch(self, split, block_size, batch_size):
@@ -191,8 +246,8 @@ class DataLoader:
 
         # prepopulate with pad tokens
         # so we don't have to pad later
-        x = x + cfg.OMNI_STOP_TOKEN
-        y = y + cfg.OMNI_STOP_TOKEN
+        x = x + self.stop_token
+        y = y + self.stop_token
 
         methods = [self.get_tokens_speech,
                    self.get_tokens_text,
@@ -233,26 +288,25 @@ class DataLoader:
 
 
 def train_omni():
-    from common import cache_dir
+    from datetime import datetime
 
-    # download_dataset(data_dir)
-    out_dir = Path(f'{cache_dir}/data/models/omni_mixed_large/')
+    today = datetime.today().strftime('%y%m%d-%H%M%S')
+    out_dir = Path(f'{CACHE_DIR}/models/{today}/omni_mixed_large/')
 
-    interleaved_dir = [f'{cache_dir}/tinystories_omni/']
+    interleaved_dir = [os.path.join(CACHE_DIR, 'tinystories_omni/')]
 
-    datasets_dirs = [f'{cache_dir}/jenny/',
-                     f'{cache_dir}/expresso/', 
-                     f'{cache_dir}/mls_eng_10k/', 
-                    f'{cache_dir}/peoples_speech/', 
-                    f'{cache_dir}/gs_xl_en_tokens/']
-    
+    datasets_dirs = [
+        os.path.join(CACHE_DIR, 'jenny/'),
+        os.path.join(CACHE_DIR, 'expresso/'),
+        # os.path.join(CACHE_DIR, 'mls_eng_10k/'),
+        # os.path.join(CACHE_DIR, 'data', 'peoples_speech_tokens/'),
+        # os.path.join(CACHE_DIR, 'gs_xl_en_tokens/')
+    ]
 
-    datasets_dirs = [f'{cache_dir}/jenny/',
-                      f'{cache_dir}/expresso/',]
-    
-
-    data_generator = DataLoader(interleaved_dirs=[interleaved_dir],
-                                datasets_dirs=datasets_dirs)
+    data_generator = DataLoader(
+        interleaved_dirs=interleaved_dir,
+        datasets_dirs=datasets_dirs
+    )
 
     pretrained = 'mdouglas/llmc-gpt2-774M-150B'
     vocab_size = cfg.VOCAB_SIZE
@@ -265,19 +319,19 @@ def train_omni():
 
     print(model)
 
-    print("Vocab size", vocab_size)
-    print("Model outdir", out_dir)
+    print("Vocab size: ", vocab_size)
+    print("Model outdir: ", out_dir)
     print("Training omni".upper())
 
 
     gpt_train(model,
               get_batch=data_generator.get_batch,
               out_dir=out_dir,
-              steps=10000,
-              block_size=1024,
-              eval_interval=100,
-              batch_size=8,
-              grad_accum_steps=8,
+              steps=training_cfg.STEPS,
+              block_size=training_cfg.BLOCK_SIZE,
+              eval_interval=training_cfg.EVAL_INTERVAL,
+              batch_size=training_cfg.BATCH_SIZE,
+              grad_accum_steps=training_cfg.GRAD_ACCUM_STEPS,
               device=DEVICE)
 
     return out_dir
