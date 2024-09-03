@@ -8,6 +8,11 @@ from pathlib import Path
 from huggingface_hub import hf_hub_download
 from huggingface_hub import upload_file, create_repo
 
+import torchaudio
+from tts.utils import convert_audio
+from torio.io import CodecConfig
+import torch
+
 
 @dataclass
 class Sample:
@@ -66,7 +71,7 @@ class Dataset:
         
         self.ids = None
 
-    def download(self, hf_repo_id=None, audio=True):
+    def download(self, hf_repo_id=None, audio=False):
         if hf_repo_id is None:
             hf_repo_id = self.repo_id
 
@@ -84,6 +89,10 @@ class Dataset:
         for name in self.dirs:
             tar_fname = self.local_path / f'{name}.tar'
             print(tar_fname)
+            if not tar_fname.exists():
+                print("Does not exist", tar_fname)
+                continue
+            
             tf = tarfile.open(tar_fname)
             tf.extractall(path=self.local_path)
             tf.close()
@@ -116,18 +125,17 @@ class Dataset:
             upload_file(repo_id=f'{self.hf_user}/{hf_repo_id}',
                         repo_type="dataset",
                         path_or_fileobj=tar_fname,
-                        repo_type="dataset",
                         path_in_repo=f'{name}.tar',
                         token=self.hf_token)
 
             print("Deleting", tar_fname)
             os.remove(tar_fname)
 
-
-    def create_sample(self, id):
+    @staticmethod
+    def create_sample(id, audio_format):
         sample = Sample()
         sample.id = id
-        sample.audio_path = str(f'{AUDIO}/{id}{self.audio_format}')
+        sample.audio_path = str(f'{AUDIO}/{id}{audio_format}')
         sample.semantic_tokens = str(f'{TOKENS}/{SEMANTIC}/{id}.npy')
         sample.acoustic_tokens = str(f'{TOKENS}/{ACOUSTIC}/{id}.npy')
         sample.text_tokens = str(f'{TOKENS}/{TEXT}/{id}.npy')
@@ -140,6 +148,27 @@ class Dataset:
         if self.metadata_writer is None:
             self.metadata_writer = open(self.metadata_path, 'a')
 
+        audio_array = torch.tensor(sample.audio_array, dtype=torch.float32)
+        audio_array = audio_array.unsqueeze(dim=0)
+
+        audio_array = convert_audio(
+            audio_array,
+            sr=sample.sampling_rate,
+            target_sr=16000,
+            target_channels=1
+        )
+
+        torchaudio.save(
+            self.get_absolute_path(sample.audio_path),
+            audio_array,
+            sample_rate=16000,
+            format='mp3',
+            encoding='PCM_S',
+            bits_per_sample=16,
+            backend='ffmpeg',
+            compression=CodecConfig(bit_rate=64000)
+        )
+        sample.audio_array = None
         sample = sample.to_json()
         self.metadata_writer.write(sample + '\n')
         self.metadata_writer.flush()
@@ -179,7 +208,7 @@ class Dataset:
                                     get_tokenizer)
         
         dataset = Dataset(repo_id=self.repo_id)
-        path = str(dataset.dirs[AUDIO] / f"*.{self.audio_format}")
+        path = str(dataset.dirs[AUDIO] / f"*{self.audio_format}")
         print(path)
         files = glob(path)
 
@@ -190,11 +219,13 @@ class Dataset:
         tokenizer.encode_batch_files(audio_files=files,
                                     outdir=dataset.dirs[SEMANTIC],
                                     num_workers=4,
+                                    chunk_size=15,
                                     batch_size=32)
 
-        tokenizer = audiotoken.AudioToken(tokenizer=audiotoken.Tokenizers.acoustic, device='cuda:0')
+        tokenizer = audiotoken.AudioToken(tokenizer=audiotoken.Tokenizers.acoustic, device='cuda:0', num_codebooks=2)
         tokenizer.encode_batch_files(audio_files=files,
                                     outdir=dataset.dirs[ACOUSTIC],
+                                    chunk_size=15,
                                     num_workers=4,
                                     batch_size=32)
 
