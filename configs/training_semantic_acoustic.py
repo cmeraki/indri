@@ -1,11 +1,11 @@
+from configs.training_commons import *
+
 # Training specific configs
 STEPS = 16000
-WARMUP_STEPS = 2000
-MAX_LR = 1e-4
-MODEL_TYPE = 'gpt2'
 EVAL_INTERVAL = 500
-EVAL_STEPS = 10
 BATCH_SIZE = 12
 GRAD_ACCUM_STEPS = 8
+
+MODEL_TYPE = 'gpt2'
 MAX_SOURCE_TOKENS = 768
 BLOCK_SIZE = 3072
