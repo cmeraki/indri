@@ -257,6 +257,8 @@ class DataLoader:
                 continue
 
             i += 1
+            start_idx = 0
+            end_idx = 0
 
             if i == batch_size:
                 break
@@ -276,7 +278,7 @@ class DataLoader:
 
         return x, y
 
-def train():
+def train(args):
     from datetime import datetime
 
     today = datetime.today().strftime('%y%m%d-%H%M%S')
@@ -323,4 +325,11 @@ def train():
 
 
 if __name__ == '__main__':
-    train()
+    from argparse import ArgumentParser
+
+    parser = ArgumentParser()
+    parser.add_argument('--device', type=str, default=DEVICE)
+    args = parser.parse_args()
+    DEVICE = args.device
+
+    train(args)
