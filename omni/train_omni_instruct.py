@@ -134,7 +134,7 @@ class DataLoader:
                 tokens = np.hstack([self.continue_token, self.semantic_modality_token, tokens])
             output.extend(tokens)
 
-        output = np.hstack(output)
+        output = np.hstack(output, self.stop_token)
         return output
 
     def normalize_text(self, text):
@@ -177,11 +177,15 @@ class DataLoader:
         tokens = replace_consecutive(tokens)
         tokens = tokens + cfg.OFFSET[SEMANTIC]
 
+        speaker_id = self.metadata[id]['speaker_id']
+        speaker_id = self.speaker_id_to_text(speaker_id)
+
         random_cut = random.randint(0, len(tokens) - 1)
         tokens = np.hstack([
             self.semantic_modality_token,
             tokens[:random_cut],
             self.continue_token,
+            speaker_id,
             self.semantic_modality_token,
             tokens[random_cut:],
             self.stop_token

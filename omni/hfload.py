@@ -41,7 +41,6 @@ def convert_to_hf(path, device: str = 'cpu'):
     config.n_layer = custom_gpt_config.n_layer
     config.n_head = custom_gpt_config.n_head
     config.vocab_size = custom_gpt_config.vocab_size
-    config.vocab_size = 53376
     config.n_embd = custom_gpt_config.n_embd
     config.n_positions = custom_gpt_config.block_size
 
