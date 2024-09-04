@@ -4,8 +4,8 @@ from configs.training_commons import *
 STEPS = 16000
 EVAL_INTERVAL = 500
 BATCH_SIZE = 8
-GRAD_ACCUM_STEPS = 8
+GRAD_ACCUM_STEPS = 16
 
-MODEL_TYPE = 'gpt2'
+MODEL_TYPE = 'gpt2-medium'
 MAX_SOURCE_TOKENS = 768
 BLOCK_SIZE = 3072
