@@ -15,7 +15,7 @@ from pathlib import Path
 from tqdm import tqdm
 from PIL import Image
 from encodec.utils import convert_audio
-from common import *
+from configs.constants import *
 
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True

@@ -53,7 +53,7 @@ class Config:
     }
 
     # This stop token is used for all the modalities
-    STOP_TOKEN = '<|endoftext|>'
+    STOP_TOKEN = '[stop]'
     VOCAB_SIZE = (sum(VOCAB_SIZES.values()) // 64 + 1)*64
 
-    print('Gap tokens: ', VOCAB_SIZE - max(VOCAB_SIZES.values()))
+    print('Gap tokens: ', VOCAB_SIZE - sum(VOCAB_SIZES.values()))
