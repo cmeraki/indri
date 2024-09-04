@@ -186,10 +186,14 @@ class DataLoader:
 
         speaker_id = self.metadata[id]['speaker_id']
         speaker_id = self.speaker_id_to_text(speaker_id)
+        null_speaker_id = self.speaker_id_to_text(None)
+        speaker_tokens = speaker_id
+        if np.random.random() < 0.2:
+            speaker_tokens = null_speaker_id
 
         tokens = np.hstack([
             self.semantic_modality_token,
-            speaker_id,
+            speaker_tokens,
             tokens,
             self.stop_token
         ])
@@ -207,14 +211,17 @@ class DataLoader:
         speech_tokens = np.load(self.get_tokens_path(id, SEMANTIC)).reshape(-1) + cfg.OFFSET[SEMANTIC]
         speaker_id = self.metadata[id]['speaker_id']
         speaker_id = self.speaker_id_to_text(speaker_id)
-        speech_tokens = replace_consecutive(speech_tokens)
+        null_speaker_id = self.speaker_id_to_text(None)
+        speaker_tokens = speaker_id
+        if np.random.random() < 0.2:
+            speaker_tokens = null_speaker_id
 
         tokens = np.hstack([
             self.text_modality_token,
             text_tokens,
             self.convert_token,
             self.semantic_modality_token,
-            speaker_id,
+            speaker_tokens,
             speech_tokens,
             self.stop_token
         ])
@@ -228,9 +235,16 @@ class DataLoader:
         text_tokens = self.get_text_tokens_for_id(id) + cfg.OFFSET[TEXT]
         speech_tokens = np.load(self.get_tokens_path(id, SEMANTIC)).reshape(-1) + cfg.OFFSET[SEMANTIC]
         speech_tokens = replace_consecutive(speech_tokens)
+        speaker_id = self.metadata[id]['speaker_id']
+        speaker_id = self.speaker_id_to_text(speaker_id)
+        null_speaker_id = self.speaker_id_to_text(None)
+        speaker_tokens = speaker_id
+        if np.random.random() < 0.2:
+            speaker_tokens = null_speaker_id
 
         tokens = np.hstack([
             self.semantic_modality_token,
+            speaker_tokens,
             speech_tokens,
             self.convert_token,
             self.text_modality_token,

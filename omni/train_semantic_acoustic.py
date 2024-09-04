@@ -126,13 +126,18 @@ class DataLoader:
 
         speaker_id = self.metadata[id]['speaker_id']
         speaker_id = self.speaker_id_to_text(speaker_id)
+        null_speaker_id = self.speaker_id_to_text(None)
+        speaker_tokens = speaker_id
+        if np.random.random() < 0.2:
+            speaker_tokens = null_speaker_id
 
         return np.hstack([
             self.semantic_modality_token,
+            speaker_tokens,
             source_arr,
             self.convert_token,
             self.acoustic_modality_token,
-            speaker_id,
+            speaker_tokens,
             target_arr,
             self.stop_token
         ])
@@ -153,13 +158,18 @@ class DataLoader:
         target_arr = replace_consecutive(target_arr)
         speaker_id = self.metadata[id]['speaker_id']
         speaker_id = self.speaker_id_to_text(speaker_id)
+        null_speaker_id = self.speaker_id_to_text(None)
+        speaker_tokens = speaker_id
+        if np.random.random() < 0.2:
+            speaker_tokens = null_speaker_id
 
         return np.hstack([
             self.acoustic_modality_token,
+            speaker_tokens,
             source_arr,
             self.convert_token,
             self.semantic_modality_token,
-            speaker_id,
+            speaker_tokens,
             target_arr,
             self.stop_token
         ])
@@ -181,10 +191,14 @@ class DataLoader:
 
         speaker_id = self.metadata[id]['speaker_id']
         speaker_id = self.speaker_id_to_text(speaker_id)
+        null_speaker_id = self.speaker_id_to_text(None)
+        speaker_tokens = speaker_id
+        if np.random.random() < 0.2:
+            speaker_tokens = null_speaker_id
 
         return np.hstack([
             self.acoustic_modality_token,
-            speaker_id,
+            speaker_tokens,
             source_arr,
             self.stop_token
         ])
@@ -199,10 +213,14 @@ class DataLoader:
 
         speaker_id = self.metadata[id]['speaker_id']
         speaker_id = self.speaker_id_to_text(speaker_id)
+        null_speaker_id = self.speaker_id_to_text(None)
+        speaker_tokens = speaker_id
+        if np.random.random() < 0.2:
+            speaker_tokens = null_speaker_id
 
         return np.hstack([
             self.semantic_modality_token,
-            speaker_id,
+            speaker_tokens,
             source_arr,
             self.stop_token
         ])
@@ -263,6 +281,7 @@ class DataLoader:
             if i == batch_size:
                 break
 
+        import pdb; pdb.set_trace()
         return x, y, tasks
 
     def get_batch(self, split, device, block_size, batch_size):
