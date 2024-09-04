@@ -7,14 +7,15 @@ from pathlib import Path
 from datalib.tokenlib import get_tokenizer
 from omni.gpt2_trainer import train as gpt_train
 from omni.gpt2_model import GPT
+from omni.logger import get_logger
 
 from configs.commons import Config as cfg
 from configs.commons import DEVICE, CACHE_DIR
 from configs.constants import *
 import configs.training_omni as training_cfg
 
-
-print(cfg.__dict__)
+logger = get_logger(__name__)
+logger.info(cfg.__dict__)
 
 def replace_consecutive(arr):
     mask = np.concatenate(([True], arr[1:] != arr[:-1]))
@@ -46,6 +47,16 @@ class DataLoader:
         self.dataset_dirs = datasets_dirs
 
         self.text_tokenizer = get_tokenizer(type=TEXT, device='cpu')
+
+        for idx in range(cfg.VOCAB_SIZES[SEMANTIC]):
+            self.text_tokenizer.tokenizer.add_tokens(f'[sem_{idx}]')
+
+        for idx in range(cfg.VOCAB_SIZES[ACOUSTIC]):
+            self.text_tokenizer.tokenizer.add_tokens(f'[aco_{idx}]')
+
+        for tok in list(cfg.MODALITY_TOKENS.values()) + list(cfg.TASK_TOKENS.values()) + [cfg.STOP_TOKEN]:
+            print('Adding token: ', tok)
+            self.text_tokenizer.tokenizer.add_tokens(tok)
 
         self.load_parallel_data(self.dataset_dirs)
         self.interleaved_files = self.load_interleaved(self.interleaved_dirs)
@@ -134,7 +145,7 @@ class DataLoader:
                 tokens = np.hstack([self.continue_token, self.semantic_modality_token, tokens])
             output.extend(tokens)
 
-        output = np.hstack(output, self.stop_token)
+        output = np.hstack([output, self.stop_token])
         return output
 
     def normalize_text(self, text):
@@ -158,13 +169,9 @@ class DataLoader:
         tokens = self.get_text_tokens_for_id(id)
         tokens = tokens + cfg.OFFSET[TEXT]
 
-        random_cut = random.randint(0, len(tokens) - 1)
         tokens = np.hstack([
             self.text_modality_token,
-            tokens[:random_cut],
-            self.continue_token,
-            self.text_modality_token,
-            tokens[random_cut:],
+            tokens,
             self.stop_token
         ])
         return tokens
@@ -180,21 +187,17 @@ class DataLoader:
         speaker_id = self.metadata[id]['speaker_id']
         speaker_id = self.speaker_id_to_text(speaker_id)
 
-        random_cut = random.randint(0, len(tokens) - 1)
         tokens = np.hstack([
             self.semantic_modality_token,
-            tokens[:random_cut],
-            self.continue_token,
             speaker_id,
-            self.semantic_modality_token,
-            tokens[random_cut:],
+            tokens,
             self.stop_token
         ])
         return tokens
 
     def get_tokens_path(self, id, type):
         sample = self.metadata[id]
-        return sample['dir'] / sample[f'{type}_tokens']
+        return sample['dir'] / sample[f'{type}_tokens'].replace('.opus', '').replace('.flac', '')
 
     def get_tts(self, split):
         # changing the way loading happens for asr and tts
@@ -210,8 +213,8 @@ class DataLoader:
             self.text_modality_token,
             text_tokens,
             self.convert_token,
-            speaker_id,
             self.semantic_modality_token,
+            speaker_id,
             speech_tokens,
             self.stop_token
         ])
@@ -242,23 +245,21 @@ class DataLoader:
             self.get_tokens_text,
             self.get_asr,
             self.get_tts,
-            self.get_tokens_continue,
+            # self.get_tokens_continue,
         ]
 
         while True:
             try:
                 method = random.choice(methods)
-                yield method(split)
-            except EOFError as e:
-                pass
-            except FileNotFoundError as e:
-                pass
+                # print(method)
+                yield method(split), method.__name__
             except Exception as e:
-                print(e)
+                pass
 
     def load_batch(self, split, block_size, batch_size):
         x = np.zeros(shape=(batch_size, block_size), dtype=np.int64)
         y = np.zeros(shape=(batch_size, block_size), dtype=np.int64)
+        tasks = []
 
         # prepopulate with pad tokens
         # so we don't have to pad later
@@ -269,8 +270,9 @@ class DataLoader:
         start_idx = 0
         end_idx = 0
 
-        for tokens in self.get_valid_sequence(split):
+        for tokens, task_name in self.get_valid_sequence(split):
             new_toks = block_size - end_idx
+            tasks.append(task_name)
             _x = tokens[:new_toks]
             _y = tokens[1:new_toks + 1]
 
@@ -294,10 +296,11 @@ class DataLoader:
             if i == batch_size:
                 break
 
-        return x, y
+        # import pdb; pdb.set_trace()
+        return x, y, tasks
 
     def get_batch(self, split, device, block_size, batch_size):
-        x, y = self.load_batch(split,
+        x, y, tasks = self.load_batch(split,
                                block_size=block_size,
                                batch_size=batch_size)
 
@@ -309,7 +312,7 @@ class DataLoader:
         else:
             x, y = x.to(device), y.to(device)
 
-        return x, y
+        return x, y, tasks
 
 
 def train_omni(args):
@@ -337,13 +340,13 @@ def train_omni(args):
     pretrained = 'mdouglas/llmc-gpt2-774M-150B'
     vocab_size = cfg.VOCAB_SIZE
 
-    model = GPT.from_pretrained(model_type='cmeraki/gpt2-124M-400B')
+    model = GPT.from_pretrained(model_type=pretrained)
     model.expand_vocab(new_vocab_size=vocab_size)
     model.to(DEVICE)
 
     model = torch.compile(model)
 
-    print(model)
+    logger.info(model)
 
     print("Vocab size: ", vocab_size)
     print("Model outdir: ", out_dir)

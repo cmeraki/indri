@@ -14,9 +14,11 @@ import configs.training_semantic_acoustic as training_cfg
 
 from omni.gpt2_model import get_model
 from omni.gpt2_trainer import train as gpt_train
+from omni.logger import get_logger
 from datalib.tokenlib import get_tokenizer
 
-print(cfg.__dict__)
+logger = get_logger(__name__)
+logger.info(cfg.__dict__)
 
 def replace_consecutive(arr):
     mask = np.concatenate(([True], arr[1:] != arr[:-1]))
@@ -36,9 +38,18 @@ class DataLoader:
         self.max_source_tokens = max_source_tokens
         self.prompt_length = prompt_length
         self.prompting = False
-        self.types = [SEMANTIC, ACOUSTIC]
-
         self.text_tokenizer = get_tokenizer(type=TEXT, device='cpu')
+
+        for idx in range(cfg.VOCAB_SIZES[SEMANTIC]):
+            self.text_tokenizer.tokenizer.add_tokens(f'[sem_{idx}]')
+
+        for idx in range(cfg.VOCAB_SIZES[ACOUSTIC]):
+            self.text_tokenizer.tokenizer.add_tokens(f'[aco_{idx}]')
+
+        for tok in list(cfg.MODALITY_TOKENS.values()) + list(cfg.TASK_TOKENS.values()) + [cfg.STOP_TOKEN]:
+            print('Adding token: ', tok)
+            self.text_tokenizer.tokenizer.add_tokens(tok)
+
         self.convert_token = self.text_tokenizer.encode(cfg.TASK_TOKENS[CONVERT])
         self.continue_token = self.text_tokenizer.encode(cfg.TASK_TOKENS[CONTINUE])
         self.stop_token = self.text_tokenizer.encode(cfg.STOP_TOKEN)
@@ -120,8 +131,8 @@ class DataLoader:
             self.semantic_modality_token,
             source_arr,
             self.convert_token,
-            speaker_id,
             self.acoustic_modality_token,
+            speaker_id,
             target_arr,
             self.stop_token
         ])
@@ -147,8 +158,8 @@ class DataLoader:
             self.acoustic_modality_token,
             source_arr,
             self.convert_token,
-            speaker_id,
             self.semantic_modality_token,
+            speaker_id,
             target_arr,
             self.stop_token
         ])
@@ -168,18 +179,13 @@ class DataLoader:
         source_arr = np.reshape(source_arr, -1)
         source_arr = source_arr + cfg.OFFSET[ACOUSTIC]
 
-        random_cut = random.randint(0, len(source_arr) - 1)
-
         speaker_id = self.metadata[id]['speaker_id']
         speaker_id = self.speaker_id_to_text(speaker_id)
 
         return np.hstack([
             self.acoustic_modality_token,
-            source_arr[:random_cut],
-            self.continue_token,
             speaker_id,
-            self.acoustic_modality_token,
-            source_arr[random_cut + 1:],
+            source_arr,
             self.stop_token
         ])
 
@@ -191,18 +197,13 @@ class DataLoader:
         source_arr = np.reshape(source_arr, -1)
         source_arr = replace_consecutive(source_arr)
 
-        random_cut = random.randint(0, len(source_arr) - 1)
-
         speaker_id = self.metadata[id]['speaker_id']
         speaker_id = self.speaker_id_to_text(speaker_id)
 
         return np.hstack([
             self.semantic_modality_token,
-            source_arr[:random_cut],
-            self.continue_token,
             speaker_id,
-            self.semantic_modality_token,
-            source_arr[random_cut + 1:],
+            source_arr,
             self.stop_token
         ])
 
@@ -217,13 +218,9 @@ class DataLoader:
         while True:
             try:
                 method = random.choice(task_methods)
-                yield method(split)
-            except EOFError as e:
-                pass
-            except FileNotFoundError as e:
-                pass
+                yield method(split), method.__name__
             except Exception as e:
-                print(e)
+                pass
 
 
     def load_batch(self, split, block_size, batch_size):
@@ -239,7 +236,10 @@ class DataLoader:
         start_idx = 0
         end_idx = 0
 
-        for tokens in self.get_valid_sequence(split):
+        tasks = []
+
+        for tokens, task in self.get_valid_sequence(split):
+            tasks.append(task)
             new_toks = block_size - end_idx
             _x = tokens[:new_toks]
             _y = tokens[1:new_toks + 1]
@@ -263,10 +263,10 @@ class DataLoader:
             if i == batch_size:
                 break
 
-        return x, y
+        return x, y, tasks
 
     def get_batch(self, split, device, block_size, batch_size):
-        x, y = self.load_batch(split, block_size=block_size, batch_size=batch_size)
+        x, y, tasks = self.load_batch(split, block_size=block_size, batch_size=batch_size)
 
         x = torch.from_numpy(x)
         y = torch.from_numpy(y)
@@ -276,7 +276,7 @@ class DataLoader:
         else:
             x, y = x.to(device), y.to(device)
 
-        return x, y
+        return x, y, tasks
 
 def train(args):
     from datetime import datetime
@@ -301,6 +301,8 @@ def train(args):
         block_size=training_cfg.BLOCK_SIZE,
         device=DEVICE,
     )
+
+    logger.info(model)
 
     print(f"Training {training_cfg.MODEL_TYPE} semantic acoustic")
     print(f"Vocab size {cfg.VOCAB_SIZE}")

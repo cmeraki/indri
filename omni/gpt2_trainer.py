@@ -4,6 +4,9 @@ import math
 import torch
 from contextlib import nullcontext
 from tqdm import tqdm
+from omni.logger import get_logger
+
+logger = get_logger(__name__)
 
 seed_offset = 0
 dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16'
@@ -44,7 +47,7 @@ def get_lr(it):
 def estimate_loss(model, ctx, eval_batches):
     model.eval()
     losses = torch.zeros(len(eval_batches))
-    for k, (X, Y) in enumerate(eval_batches):
+    for k, (X, Y, tasks) in enumerate(eval_batches):
         with ctx:
             logits, loss = model(X, Y)
         losses[k] = loss.item()
@@ -84,7 +87,7 @@ def train(model,
     local_iter_num = 0
 
     eval_batches = [get_batch('val', batch_size=batch_size, block_size=block_size, device=device) for i in range(eval_steps)]
-    X, Y = get_batch('train', block_size=block_size, batch_size=batch_size, device=device)
+    X, Y, _ = get_batch('train', block_size=block_size, batch_size=batch_size, device=device)
 
     all_losses = {}
 
@@ -94,6 +97,7 @@ def train(model,
 
         if iter_num % eval_interval == 0:
             losses = estimate_loss(model, ctx, eval_batches)
+            logger.info(f"Validation loss: {iter_num}, {losses}")
             all_losses['val'] = losses
             model_fname = f"{out_dir}/gpt_{iter_num}.pt"
             torch.save({"model": model.state_dict(), "config": model.config}, model_fname)
@@ -102,7 +106,7 @@ def train(model,
             with ctx:
                 logits, loss = model(X, Y)
                 loss = loss / grad_accum_steps
-            X, Y = get_batch('train', block_size=block_size, batch_size=batch_size, device=device)
+            X, Y, _ = get_batch('train', block_size=block_size, batch_size=batch_size, device=device)
             scaler.scale(loss).backward()
 
         if grad_clip != 0.0:
