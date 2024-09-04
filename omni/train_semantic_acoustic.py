@@ -28,14 +28,10 @@ class DataLoader:
     def __init__(
         self,
         data_dirs,
-        max_source_tokens=256,
         prompt_length=0,
-        max_files=None
     ):
 
         self.data_dirs = data_dirs
-        self.max_files = max_files
-        self.max_source_tokens = max_source_tokens
         self.prompt_length = prompt_length
         self.prompting = False
         self.text_tokenizer = get_tokenizer(type=TEXT, device='cpu')
@@ -55,8 +51,6 @@ class DataLoader:
         self.stop_token = self.text_tokenizer.encode(cfg.STOP_TOKEN)
         self.semantic_modality_token = self.text_tokenizer.encode(cfg.MODALITY_TOKENS[SEMANTIC])
         self.acoustic_modality_token = self.text_tokenizer.encode(cfg.MODALITY_TOKENS[ACOUSTIC])
-
-        print(f'Training semantic acoustic model with max source tokens {max_source_tokens} and max files {max_files}')
 
         self.load_parallel_data(self.data_dirs)
 
@@ -137,7 +131,7 @@ class DataLoader:
             source_arr,
             self.convert_token,
             self.acoustic_modality_token,
-            speaker_tokens,
+            speaker_id,
             target_arr,
             self.stop_token
         ])
@@ -165,7 +159,7 @@ class DataLoader:
 
         return np.hstack([
             self.acoustic_modality_token,
-            speaker_tokens,
+            speaker_id,
             source_arr,
             self.convert_token,
             self.semantic_modality_token,
@@ -281,7 +275,7 @@ class DataLoader:
             if i == batch_size:
                 break
 
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         return x, y, tasks
 
     def get_batch(self, split, device, block_size, batch_size):
@@ -327,8 +321,7 @@ def train(args):
     print(f"Vocab size {cfg.VOCAB_SIZE}")
 
     data_generator = DataLoader(
-        data_dirs=data_dirs,
-        max_source_tokens=training_cfg.MAX_SOURCE_TOKENS,
+        data_dirs=data_dirs
     )
 
     gpt_train(
