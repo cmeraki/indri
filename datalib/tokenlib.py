@@ -120,7 +120,7 @@ class EncodecTokenizer:
         # Preload bark model
         _ = bark_load_model(
             model_type="fine",
-            use_gpu=True
+            use_gpu=True if 'cuda' in device else False
         )
 
         return model

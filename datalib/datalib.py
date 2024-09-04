@@ -87,6 +87,9 @@ class Dataset:
                             filename=tar_name)
 
         for name in self.dirs:
+            if (name =='audio') and (audio == False):
+                continue
+
             tar_fname = self.local_path / f'{name}.tar'
             print(tar_fname)
             if not tar_fname.exists():

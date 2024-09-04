@@ -85,6 +85,13 @@ class Config:
 
     OMNI_STOP_TOKEN = VOCAB_SIZE - 1
 
-    
+    # These are defined based on the source
+    MAX_SOURCE_TOKENS = {
+        TEXT: 256,
+        SEMANTIC: 768
+    }
 
-    
+    BLOCK_SIZE = {
+        TEXT: 1024,
+        SEMANTIC: 3072
+    }
