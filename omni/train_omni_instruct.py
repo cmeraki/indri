@@ -333,7 +333,7 @@ def train_omni(args):
     from datetime import datetime
 
     today = datetime.today().strftime('%y%m%d-%H%M%S')
-    out_dir = Path(f'{CACHE_DIR}/models/omni_tasks_large/')
+    out_dir = Path(f'{CACHE_DIR}/models/omni_tasks_large_full/')
 
     interleaved_dir = [Path(f'{CACHE_DIR}/tinystories_omni/')]
 
@@ -344,6 +344,7 @@ def train_omni(args):
         Path(f'{CACHE_DIR}/data/peoples_speech_tokens/'),
         Path(f'{CACHE_DIR}/data/gs_xl_en_tokens/'),
         Path(f'{CACHE_DIR}/hifi_tts'),
+        Path(f'{CACHE_DIR}/youtube_en_asmr'),
     ]
 
     data_generator = DataLoader(

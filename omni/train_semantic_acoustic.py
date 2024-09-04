@@ -295,7 +295,7 @@ def train(args):
     from datetime import datetime
 
     today = datetime.today().strftime('%y%m%d-%H%M%S')
-    out_dir = Path(f'{CACHE_DIR}/romit/models/semantic_acoustic_tasks_small')
+    out_dir = Path(f'{CACHE_DIR}/romit/models/semantic_acoustic_tasks_medium')
     data_dirs = [
         Path(f'{CACHE_DIR}/mls_eng_10k'),
         Path(f'{CACHE_DIR}/data/peoples_speech_tokens'),
@@ -303,6 +303,7 @@ def train(args):
         Path(f'{CACHE_DIR}/jenny'),
         Path(f'{CACHE_DIR}/hifi_tts'),
         Path(f'{CACHE_DIR}/expresso'),
+        Path(f'{CACHE_DIR}/youtube_en_asmr'),
     ]
 
     print("Data dirs: ", data_dirs)
