@@ -166,3 +166,4 @@ tmp/*
 devlog.md
 logs/*
 .idea/
+*/archive/*

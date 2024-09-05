@@ -54,6 +54,6 @@ class Config:
 
     # This stop token is used for all the modalities
     STOP_TOKEN = '[stop]'
-    VOCAB_SIZE = (sum(VOCAB_SIZES.values()) // 64 + 1)*64
+    VOCAB_SIZE = 59968
 
     print('Gap tokens: ', VOCAB_SIZE - sum(VOCAB_SIZES.values()))

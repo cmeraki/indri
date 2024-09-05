@@ -28,23 +28,42 @@ class DataLoader:
     def __init__(
         self,
         data_dirs,
+        speaker_files,
         prompt_length=0,
     ):
 
         self.data_dirs = data_dirs
         self.prompt_length = prompt_length
         self.prompting = False
+        self.speaker_files = speaker_files
+
         self.text_tokenizer = get_tokenizer(type=TEXT, device='cpu')
 
         for idx in range(cfg.VOCAB_SIZES[SEMANTIC]):
             self.text_tokenizer.tokenizer.add_tokens(f'[sem_{idx}]')
+            # print(f'Added token [sem_{idx}], {self.text_tokenizer.encode(f"[sem_{idx}]")}')
 
         for idx in range(cfg.VOCAB_SIZES[ACOUSTIC]):
             self.text_tokenizer.tokenizer.add_tokens(f'[aco_{idx}]')
+            # print(f'Added token [aco_{idx}], {self.text_tokenizer.encode(f"[aco_{idx}]")}')
 
         for tok in list(cfg.MODALITY_TOKENS.values()) + list(cfg.TASK_TOKENS.values()) + [cfg.STOP_TOKEN]:
-            print('Adding token: ', tok)
             self.text_tokenizer.tokenizer.add_tokens(tok)
+            logger.info(f'Added token {tok}, {self.text_tokenizer.encode(tok)}')
+
+        allowed_speakers = self.load_speakers(self.speaker_files)
+
+        self.valid_speakers = []
+        # Create special tokens for each speaker
+        for speaker in allowed_speakers:
+            ds_name = speaker['dataset']
+            speaker_id = speaker['speaker']
+            combined = f'[spkr_{ds_name}_{speaker_id}]'
+            self.text_tokenizer.tokenizer.add_tokens(combined)
+            self.valid_speakers.append(combined)
+            logger.info(f'Added token {combined}, {self.text_tokenizer.encode(combined)}')
+
+        self.text_tokenizer.tokenizer.add_tokens(f'[spkr_unk]')
 
         self.convert_token = self.text_tokenizer.encode(cfg.TASK_TOKENS[CONVERT])
         self.continue_token = self.text_tokenizer.encode(cfg.TASK_TOKENS[CONTINUE])
@@ -54,16 +73,34 @@ class DataLoader:
 
         self.load_parallel_data(self.data_dirs)
 
-    def speaker_id_to_text(self, id, dataset=None):
-        if dataset:
-            text = f'[spkr_{dataset}_{id}]'
-        else:
-            if id is not None and len(id) > 0:
-                text = f'[spkr_{id}]'
-            else:
-                text = '[spkr_unk]'
-        
-        return self.text_tokenizer.encode(text)
+    def load_speakers(self, speaker_files):
+        allowed_speakers = []
+
+        for fl in speaker_files:
+            for line in open(fl):
+                if not line:
+                    continue
+                x = json.loads(line.strip())
+                allowed_speakers.append(x)
+
+        return allowed_speakers
+
+    def speaker_id_to_text(self, id):
+        if id is None:
+            return self.text_tokenizer.encode('[spkr_unk]')
+
+        dataset = self.metadata[id]['dataset']
+        speaker_id = self.metadata[id]['speaker_id']
+
+        if speaker_id is None:
+            return self.text_tokenizer.encode('[spkr_unk]')
+
+        text = f'[spkr_{dataset}_{speaker_id}]'
+
+        if text in self.valid_speakers:
+            return self.text_tokenizer.encode(text)
+
+        return self.text_tokenizer.encode('[spkr_unk]')
 
     def load_parallel_data(self, dirs):
         metadata = {}
@@ -74,9 +111,10 @@ class DataLoader:
             for line in open(metadata_path):
                 _metadata = json.loads(line.strip())
                 _metadata['dir'] = dir
+                _metadata['dataset'] = dir.name
                 metadata[_metadata['id']] = _metadata
 
-        print("Num metadata lines: ", len(metadata))
+        logger.info(f"Num metadata lines: {len(metadata)}")
 
         self.ids = list(metadata.keys())
         random.shuffle(self.ids)
@@ -118,8 +156,7 @@ class DataLoader:
         target_arr = np.reshape(target_arr, -1)
         target_arr = target_arr + cfg.OFFSET[ACOUSTIC]
 
-        speaker_id = self.metadata[id]['speaker_id']
-        speaker_id = self.speaker_id_to_text(speaker_id)
+        speaker_id = self.speaker_id_to_text(id)
         null_speaker_id = self.speaker_id_to_text(None)
         speaker_tokens = speaker_id
         if np.random.random() < 0.2:
@@ -150,8 +187,8 @@ class DataLoader:
         target_arr = target_arr + cfg.OFFSET[SEMANTIC]
         target_arr = np.reshape(target_arr, -1)
         target_arr = replace_consecutive(target_arr)
-        speaker_id = self.metadata[id]['speaker_id']
-        speaker_id = self.speaker_id_to_text(speaker_id)
+
+        speaker_id = self.speaker_id_to_text(id)
         null_speaker_id = self.speaker_id_to_text(None)
         speaker_tokens = speaker_id
         if np.random.random() < 0.2:
@@ -183,8 +220,7 @@ class DataLoader:
         source_arr = np.reshape(source_arr, -1)
         source_arr = source_arr + cfg.OFFSET[ACOUSTIC]
 
-        speaker_id = self.metadata[id]['speaker_id']
-        speaker_id = self.speaker_id_to_text(speaker_id)
+        speaker_id = self.speaker_id_to_text(id)
         null_speaker_id = self.speaker_id_to_text(None)
         speaker_tokens = speaker_id
         if np.random.random() < 0.2:
@@ -205,8 +241,7 @@ class DataLoader:
         source_arr = np.reshape(source_arr, -1)
         source_arr = replace_consecutive(source_arr)
 
-        speaker_id = self.metadata[id]['speaker_id']
-        speaker_id = self.speaker_id_to_text(speaker_id)
+        speaker_id = self.speaker_id_to_text(id)
         null_speaker_id = self.speaker_id_to_text(None)
         speaker_tokens = speaker_id
         if np.random.random() < 0.2:
@@ -294,20 +329,26 @@ class DataLoader:
 def train(args):
     from datetime import datetime
 
-    today = datetime.today().strftime('%y%m%d-%H%M%S')
-    out_dir = Path(f'{CACHE_DIR}/romit/models/semantic_acoustic_tasks_medium')
+    out_dir = Path(f'{CACHE_DIR}/models/semantic_acoustic_tasks_spkr')
     data_dirs = [
-        Path(f'{CACHE_DIR}/mls_eng_10k'),
-        Path(f'{CACHE_DIR}/data/peoples_speech_tokens'),
-        Path(f'{CACHE_DIR}/data/gs_xl_en_tokens'),
-        Path(f'{CACHE_DIR}/jenny'),
+        Path(f'{CACHE_DIR}/jenny/'),
+        Path(f'{CACHE_DIR}/expresso/'),
+        Path(f'{CACHE_DIR}/mls_eng_10k/'),
+        Path(f'{CACHE_DIR}/data/peoples_speech_tokens/'),
+        Path(f'{CACHE_DIR}/data/gs_xl_en_tokens/'),
         Path(f'{CACHE_DIR}/hifi_tts'),
-        Path(f'{CACHE_DIR}/expresso'),
+        Path(f'{CACHE_DIR}/hifi_tts_other'),
+        Path(f'{CACHE_DIR}/youtube_en_gibiasmr'),
         Path(f'{CACHE_DIR}/youtube_en_asmr'),
+        Path(f'{CACHE_DIR}/youtube_en_spongebob'),
     ]
 
-    print("Data dirs: ", data_dirs)
-    print("Out dir: ", out_dir)
+    speaker_files = [
+        Path(f'allowed_speakers.jsonl'),
+    ]
+
+    logger.info(f"Data dirs: {data_dirs}")
+    logger.info(f"Out dir: {out_dir}")
 
     model = get_model(
         model_type=training_cfg.MODEL_TYPE,
@@ -318,11 +359,12 @@ def train(args):
 
     logger.info(model)
 
-    print(f"Training {training_cfg.MODEL_TYPE} semantic acoustic")
-    print(f"Vocab size {cfg.VOCAB_SIZE}")
+    logger.info(f"Training {training_cfg.MODEL_TYPE} semantic acoustic".upper())
+    logger.info(f"Vocab size {cfg.VOCAB_SIZE}")
 
     data_generator = DataLoader(
-        data_dirs=data_dirs
+        data_dirs=data_dirs,
+        speaker_files=speaker_files
     )
 
     gpt_train(

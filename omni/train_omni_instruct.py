@@ -31,7 +31,7 @@ def replace_consecutive(arr):
 # prepare annotations on gigaspeech, it was made long long ago
 
 class DataLoader:
-    def __init__(self, interleaved_dirs, datasets_dirs):
+    def __init__(self, interleaved_dirs, datasets_dirs, speaker_files):
         # types of data on which training is done
         # TTS
         # TTS with speaker id
@@ -45,39 +45,71 @@ class DataLoader:
 
         self.interleaved_dirs = interleaved_dirs
         self.dataset_dirs = datasets_dirs
+        self.speaker_files = speaker_files
 
         self.text_tokenizer = get_tokenizer(type=TEXT, device='cpu')
 
         for idx in range(cfg.VOCAB_SIZES[SEMANTIC]):
             self.text_tokenizer.tokenizer.add_tokens(f'[sem_{idx}]')
+            # print(f'Added token [sem_{idx}], {self.text_tokenizer.encode(f"[sem_{idx}]")}')
 
         for idx in range(cfg.VOCAB_SIZES[ACOUSTIC]):
             self.text_tokenizer.tokenizer.add_tokens(f'[aco_{idx}]')
+            # print(f'Added token [aco_{idx}], {self.text_tokenizer.encode(f"[aco_{idx}]")}')
 
         for tok in list(cfg.MODALITY_TOKENS.values()) + list(cfg.TASK_TOKENS.values()) + [cfg.STOP_TOKEN]:
-            print('Adding token: ', tok)
             self.text_tokenizer.tokenizer.add_tokens(tok)
+            logger.info(f'Added token {tok}, {self.text_tokenizer.encode(tok)}')
 
         self.load_parallel_data(self.dataset_dirs)
         self.interleaved_files = self.load_interleaved(self.interleaved_dirs)
+        allowed_speakers = self.load_speakers(self.speaker_files)
 
+        self.valid_speakers = []
+        # Create special tokens for each speaker
+        for speaker in allowed_speakers:
+            ds_name = speaker['dataset']
+            speaker_id = speaker['speaker']
+            combined = f'[spkr_{ds_name}_{speaker_id}]'
+            self.text_tokenizer.tokenizer.add_tokens(combined)
+            self.valid_speakers.append(combined)
+            logger.info(f'Added token {combined}, {self.text_tokenizer.encode(combined)}')
+
+        self.text_tokenizer.tokenizer.add_tokens(f'[spkr_unk]')
         self.convert_token = self.text_tokenizer.encode(cfg.TASK_TOKENS[CONVERT])
         self.continue_token = self.text_tokenizer.encode(cfg.TASK_TOKENS[CONTINUE])
         self.stop_token = self.text_tokenizer.encode(cfg.STOP_TOKEN)
         self.semantic_modality_token = self.text_tokenizer.encode(cfg.MODALITY_TOKENS[SEMANTIC])
         self.text_modality_token = self.text_tokenizer.encode(cfg.MODALITY_TOKENS[TEXT])
 
+    def load_speakers(self, speaker_files):
+        allowed_speakers = []
 
-    def speaker_id_to_text(self, id, dataset=None):
-        if dataset:
-            text = f'[spkr_{dataset}_{id}]'
-        else:
-            if id is not None and len(id) > 0:
-                text = f'[spkr_{id}]'
-            else:
-                text = '[spkr_unk]'
-        
-        return self.text_tokenizer.encode(text)
+        for fl in speaker_files:
+            for line in open(fl):
+                if not line:
+                    continue
+                x = json.loads(line.strip())
+                allowed_speakers.append(x)
+
+        return allowed_speakers
+
+    def speaker_id_to_text(self, id):
+        if id is None:
+            return self.text_tokenizer.encode('[spkr_unk]')
+
+        dataset = self.metadata[id]['dataset']
+        speaker_id = self.metadata[id]['speaker_id']
+
+        if speaker_id is None:
+            return self.text_tokenizer.encode('[spkr_unk]')
+
+        text = f'[spkr_{dataset}_{speaker_id}]'
+
+        if text in self.valid_speakers:
+            return self.text_tokenizer.encode(text)
+
+        return self.text_tokenizer.encode('[spkr_unk]')
 
     def load_parallel_data(self, dirs):
         metadata = {}
@@ -87,9 +119,10 @@ class DataLoader:
             for line in open(metadata_path):
                 _metadata = json.loads(line.strip())
                 _metadata['dir'] = dir
+                _metadata['dataset'] = dir.name
                 metadata[_metadata['id']] = _metadata
 
-        print("num metadata lines", len(metadata))
+        logger.info(f"num metadata lines: {len(metadata)}")
 
         self.ids = list(metadata.keys())
         
@@ -106,7 +139,7 @@ class DataLoader:
         for dir in data_dir:
             files.extend(list(dir.glob('**/*.json')))
 
-        print("Num interleaved files", len(files))
+        logger.info(f"Num interleaved files: {len(files)}")
 
         files = {
             'train': files[1000:],
@@ -184,12 +217,7 @@ class DataLoader:
         tokens = replace_consecutive(tokens)
         tokens = tokens + cfg.OFFSET[SEMANTIC]
 
-        speaker_id = self.metadata[id]['speaker_id']
-        speaker_id = self.speaker_id_to_text(speaker_id)
-        null_speaker_id = self.speaker_id_to_text(None)
-        speaker_tokens = speaker_id
-        if np.random.random() < 0.2:
-            speaker_tokens = null_speaker_id
+        speaker_tokens = self.speaker_id_to_text(id)
 
         tokens = np.hstack([
             self.semantic_modality_token,
@@ -209,12 +237,9 @@ class DataLoader:
         id = random.choice(self.ids[split])
         text_tokens = self.get_text_tokens_for_id(id) + cfg.OFFSET[TEXT]
         speech_tokens = np.load(self.get_tokens_path(id, SEMANTIC)).reshape(-1) + cfg.OFFSET[SEMANTIC]
-        speaker_id = self.metadata[id]['speaker_id']
-        speaker_id = self.speaker_id_to_text(speaker_id)
-        null_speaker_id = self.speaker_id_to_text(None)
-        speaker_tokens = speaker_id
-        if np.random.random() < 0.2:
-            speaker_tokens = null_speaker_id
+        speech_tokens = replace_consecutive(speech_tokens)
+
+        speaker_tokens = self.speaker_id_to_text(id)
 
         tokens = np.hstack([
             self.text_modality_token,
@@ -235,12 +260,8 @@ class DataLoader:
         text_tokens = self.get_text_tokens_for_id(id) + cfg.OFFSET[TEXT]
         speech_tokens = np.load(self.get_tokens_path(id, SEMANTIC)).reshape(-1) + cfg.OFFSET[SEMANTIC]
         speech_tokens = replace_consecutive(speech_tokens)
-        speaker_id = self.metadata[id]['speaker_id']
-        speaker_id = self.speaker_id_to_text(speaker_id)
-        null_speaker_id = self.speaker_id_to_text(None)
-        speaker_tokens = speaker_id
-        if np.random.random() < 0.2:
-            speaker_tokens = null_speaker_id
+
+        speaker_tokens = self.speaker_id_to_text(id)
 
         tokens = np.hstack([
             self.semantic_modality_token,
@@ -330,10 +351,7 @@ class DataLoader:
 
 
 def train_omni(args):
-    from datetime import datetime
-
-    today = datetime.today().strftime('%y%m%d-%H%M%S')
-    out_dir = Path(f'{CACHE_DIR}/models/omni_tasks_large_full/')
+    out_dir = Path(f'{CACHE_DIR}/models/omni_tasks_large_full_sprk/')
 
     interleaved_dir = [Path(f'{CACHE_DIR}/tinystories_omni/')]
 
@@ -344,12 +362,20 @@ def train_omni(args):
         Path(f'{CACHE_DIR}/data/peoples_speech_tokens/'),
         Path(f'{CACHE_DIR}/data/gs_xl_en_tokens/'),
         Path(f'{CACHE_DIR}/hifi_tts'),
+        Path(f'{CACHE_DIR}/hifi_tts_other'),
+        Path(f'{CACHE_DIR}/youtube_en_gibiasmr'),
         Path(f'{CACHE_DIR}/youtube_en_asmr'),
+        Path(f'{CACHE_DIR}/youtube_en_spongebob'),
+    ]
+
+    speaker_files = [
+        Path(f'allowed_speakers.jsonl'),
     ]
 
     data_generator = DataLoader(
         interleaved_dirs=interleaved_dir,
-        datasets_dirs=datasets_dirs
+        datasets_dirs=datasets_dirs,
+        speaker_files=speaker_files,
     )
 
     pretrained = 'mdouglas/llmc-gpt2-774M-150B'
@@ -363,9 +389,9 @@ def train_omni(args):
 
     logger.info(model)
 
-    print("Vocab size: ", vocab_size)
-    print("Model outdir: ", out_dir)
-    print("Training omni".upper())
+    logger.info(f"Vocab size: {vocab_size}")
+    logger.info(f"Model outdir: {out_dir}")
+    logger.info("Training omni".upper())
 
 
     gpt_train(model,
