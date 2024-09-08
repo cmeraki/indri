@@ -1,4 +1,6 @@
 import torch
+import random
+import numpy as np
 from pathlib import Path
 from contextlib import nullcontext
 from configs.constants import *
@@ -6,6 +8,8 @@ from configs.constants import *
 seed = 1337
 torch.manual_seed(seed)
 torch.cuda.manual_seed(seed)
+random.seed(seed)
+np.random.seed(seed)
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 rng_state = torch.random.get_rng_state()
