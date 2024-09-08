@@ -29,6 +29,8 @@ Path(CACHE_DIR).mkdir(exist_ok=True, parents=True)
 
 print('Cache directory at: ', CACHE_DIR)
 
+SPEAKER_FILE = 'allowed_speakers.jsonl'
+
 class Config:
     coarse_codebooks = 2
     per_codebook_size = 1024
@@ -55,6 +57,8 @@ class Config:
         SEMANTIC: '[semantic]',
         ACOUSTIC: '[acoustic]',
     }
+
+    UNKNOWN_SPEAKER_ID = '[spkr_unk]'
 
     # This stop token is used for all the modalities
     STOP_TOKEN = '[stop]'
