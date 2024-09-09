@@ -10,41 +10,37 @@ from configs.commons import DEVICE, CACHE_DIR, CTX
 from configs.constants import *
 
 from omni.hfload import convert_to_hf
+from omni.logger import get_logger
+from omni.train import get_text_tokenizer, TaskGenerator
 from datalib.tokenlib import get_tokenizer
-from omni.train_omni_instruct import DataLoader
 
-local_dir = f'{CACHE_DIR}/models/omni_774m_tinystories'
+logger = get_logger(__name__)
+
+# local_dir = f'{CACHE_DIR}/models/omni_774m_tinystories'
+# snapshot_download(f'cmeraki/tts_xl_30k_long_125m_en/semantic_acoustic/', local_dir=local_dir)
+
 omni_model = convert_to_hf(
-    path=f'/home/.cache/indri/models/omni_tasks_large/gpt_2900.pt',
+    path=f'/home/romit/Downloads/omni.pt',
     device=DEVICE
 )
 semantic_acoustic_model = convert_to_hf(
-    path=f'/home/.cache/indri/romit/models/semantic_acoustic_tasks_small/gpt_4500.pt',
+    path=f'/home/romit/Downloads/sem_aco.pt',
     device=DEVICE
 )
 
 acoustic_tokenizer = get_tokenizer(ACOUSTIC, device=DEVICE)
+text_tokenizer = get_text_tokenizer(TEXT, device=DEVICE)
 
-# snapshot_download(f'cmeraki/tts_xl_30k_long_125m_en/semantic_acoustic/', local_dir=local_dir)
-
-# Common tokenization
-dl = DataLoader(
-    interleaved_dirs=[],
-    datasets_dirs=[],
-    speaker_files=[Path('../allowed_speakers.jsonl').resolve()]
-)
-
-text_tokenizer = dl.text_tokenizer
-acoustic_modality_token = text_tokenizer.encode(cfg.MODALITY_TOKENS[ACOUSTIC])
-
+dl = TaskGenerator(loader=None)
 omni_model.generation_config.eos_token_id = dl.stop_token
 semantic_acoustic_model.generation_config.eos_token_id = dl.stop_token
 
+# Manual mapping of allowed speaker IDs in the app
 SPEAKERS = {
-    "ASMR": "[spkr_asmr]",
-    "Cartoon": "[spkr_cartoon]",
+    "ASMR": "[spkr_youtube_en_gibiasmr_gibi_asmr]",
+    "Cartoon": "[spkr_youtube_en_spongebob_spongebob]",
     "Jenny": "[spkr_jenny_jenny]",
-    "Random": "[spkr_unk]"
+    "Random": cfg.UNKNOWN_SPEAKER_ID
 }
 
 
@@ -53,7 +49,7 @@ def create_omni_tokens(task, incoming_tokens, incoming_modality, speaker_id = '[
         input_tokens = np.hstack([
             dl.text_modality_token,
             incoming_tokens,
-            dl.convert_tokens,
+            dl.convert_token,
             dl.semantic_modality_token,
             text_tokenizer.encode(speaker_id)
         ])
@@ -80,24 +76,26 @@ def create_omni_tokens(task, incoming_tokens, incoming_modality, speaker_id = '[
             incoming_tokens
         ])
 
-    print(f'Input tokens: {text_tokenizer.decode(input_tokens)}, shape: {input_tokens.shape}')
+    logger.info(f'Input tokens: {text_tokenizer.decode(input_tokens)}, shape: {input_tokens.shape}')
     return input_tokens
 
 
 def create_semaco_tokens(incoming_tokens, speaker_id = '[spkr_unk]'):
     input_tokens = np.hstack([
         dl.semantic_modality_token,
-        text_tokenizer.encode(speaker_id),
         incoming_tokens,
-        dl.convert_tokens,
-        acoustic_modality_token
+        dl.convert_token,
+        dl.acoustic_modality_token,
+        text_tokenizer.encode(speaker_id)
     ])
 
-    print(f'Input tokens: {text_tokenizer.decode(input_tokens)}, shape: {input_tokens.shape}')
+    logger.info(f'Input tokens: {text_tokenizer.decode(input_tokens)}, shape: {input_tokens.shape}')
     return input_tokens
 
 
 def converse(task, text_input, audio_input, speaker):
+
+    logger.info(f'Task: {task}, Text: {text_input}, Audio: {audio_input}, Speaker: {speaker}')
 
     if text_input:
         assert audio_input is None, "Cannot provide both text and audio inputs"
@@ -112,6 +110,8 @@ def converse(task, text_input, audio_input, speaker):
         input_tokens = create_omni_tokens(task, audio_input, AUDIO, speaker)
 
     input_tokens = (torch.tensor(input_tokens, dtype=torch.long, device=DEVICE)[None, ...])
+
+    logger.info(f'Input tokens: {text_tokenizer.decode(input_tokens)}, shape: {input_tokens.shape}')
 
     # Text -> Semantic/Text
     with CTX:
@@ -128,7 +128,8 @@ def converse(task, text_input, audio_input, speaker):
 
     end_idx = np.where(omni_output == dl.stop_token)[0][0]
     omni_output = omni_output[:end_idx]
-    print(f'Omni output: {text_tokenizer.decode(omni_output)}, shape: {omni_output.shape}')
+
+    logger.info(f'Omni output: {text_tokenizer.decode(omni_output)}, shape: {omni_output.shape}')
 
     if task in [CONTINUE, ASR] and text_input:
         return text_tokenizer.decode(omni_output), None, None
@@ -149,13 +150,14 @@ def converse(task, text_input, audio_input, speaker):
         acoustic_tokens = acoustic_tokens[len(semantic_tokens):]
 
     end_idx = np.where(acoustic_tokens == dl.stop_token)[0][0]
-    acoustic_tokens = acoustic_tokens[0:end_idx]
+    acoustic_tokens = acoustic_tokens[:end_idx]
     acoustic_tokens = acoustic_tokens - cfg.OFFSET[ACOUSTIC]
 
+    # Extra check to ensure that the acoustic tokens are even
     if len(acoustic_tokens) % 2 == 1:
         acoustic_tokens = acoustic_tokens[:-1]
 
-    print(f'Acoustic output: {acoustic_tokens}, shape: {acoustic_tokens.shape}')
+    logger.info(f'Acoustic output: {acoustic_tokens}, shape: {acoustic_tokens.shape}')
 
     # Acoustic -> Audio
     wav = acoustic_tokenizer.decode(torch.tensor(acoustic_tokens))
@@ -168,7 +170,7 @@ def converse(task, text_input, audio_input, speaker):
 
 with gr.Blocks() as demo:
     gr.Markdown("## Omni")
-    
+
     with gr.Row():
         task = gr.Dropdown(["ASR", "TTS", "Continue Text", "Continue Audio"], label="Select Task")
         speaker = gr.Dropdown(list(SPEAKERS.keys()), label="Select Speaker")
