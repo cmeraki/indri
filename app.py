@@ -1,3 +1,4 @@
+import math
 import torch
 import gradio as gr
 import numpy as np
@@ -19,7 +20,6 @@ from datalib.tokenlib import get_tokenizer
 
 from tts.utils import convert_audio
 
-import pdb
 
 logger = get_logger(__name__)
 
@@ -27,13 +27,15 @@ logger = get_logger(__name__)
 # snapshot_download(f'cmeraki/tts_xl_30k_long_125m_en/semantic_acoustic/', local_dir=local_dir)
 
 omni_model = convert_to_hf(
-    path=f'omni.pt',
+    path=Path('~/Downloads/omni.pt').expanduser(),
     device=DEVICE
 )
 semantic_acoustic_model = convert_to_hf(
-    path=Path('~/Downloads/gpt_7000.pt').expanduser(),
+    path=Path('~/Downloads/sem_aco.pt').expanduser(),
     device=DEVICE
 )
+omni_model.eval()
+semantic_acoustic_model.eval()
 
 acoustic_tokenizer = get_tokenizer(ACOUSTIC, device=DEVICE)
 text_tokenizer = get_text_tokenizer()
@@ -46,7 +48,7 @@ semantic_acoustic_model.generation_config.eos_token_id = dl.stop_token
 # Manual mapping of allowed speaker IDs in the app
 SPEAKERS = {
     "ASMR": "[spkr_youtube_en_asmr_daily_bread_asmr]",
-    "Cartoon": "[spkr_mls_eng_10k_6454]",
+    "Male": "[spkr_mls_eng_10k_6454]",
     "Jenny": "[spkr_jenny_jenny]",
     "Random": cfg.UNKNOWN_SPEAKER_ID
 }
@@ -70,6 +72,66 @@ def normalize_text(text):
     text = text.replace('<exclamationpoint>', '!')
     text = text.replace("\n", " ")
     return text
+
+
+def long_infer(model, semantic_tokens, max_source_tokens=256, speaker_id='[spkr_unk]'):
+    all_source_toks = []
+    all_gen_toks = []
+    target_overlap = 0
+    target_tokens = np.asarray([], dtype=np.int64)
+    stride = max_source_tokens//2
+
+    for start_idx in range(0, semantic_tokens.shape[-1], stride):
+        # Create proper token sequence for a short generation
+        end_idx = start_idx + max_source_tokens
+        source_cut = semantic_tokens[start_idx: end_idx]
+        target_cut = target_tokens[-target_overlap:]
+
+        input_tokens = create_semaco_tokens(source_cut, speaker_id)
+        input_tokens = np.hstack([
+            input_tokens, target_cut
+        ])
+        logger.info(f'{start_idx}: Source tokens shape: {source_cut.shape}, target tokens shape: {target_cut.shape}, combined shape: {input_tokens.shape}')
+
+        input_tokens = torch.tensor(input_tokens, dtype=torch.long, device=DEVICE)[None, ...]
+        all_source_toks.append(input_tokens)
+
+        with CTX:
+            new_target_tokens = model.generate(
+                input_tokens,
+                max_new_tokens=3072,
+                temperature=0.8,
+                top_k=100,
+                do_sample=True,
+            ).detach().cpu().numpy()[0]
+
+            new_target_tokens = new_target_tokens[input_tokens.shape[-1]:]
+
+        end_idx = np.where(new_target_tokens == dl.stop_token)[0]
+        if len(end_idx) >= 1:
+            end_idx = end_idx[0]
+            new_target_tokens = new_target_tokens[:end_idx]
+
+        # Extra check to ensure that the acoustic tokens are even
+        if len(new_target_tokens) % 2 == 1:
+            new_target_tokens = new_target_tokens[:-1]
+
+        logger.info(f'{start_idx}: New target tokens shape: {new_target_tokens.shape}')
+
+        target_overlap = new_target_tokens.shape[-1]
+        if start_idx == 0:
+            target_overlap = (max_source_tokens-stride) * new_target_tokens.shape[-1]/max_source_tokens
+            target_overlap = math.ceil(target_overlap)
+        if target_overlap % 2 == 1:
+            target_overlap += 1
+
+        target_tokens = np.hstack([target_tokens, new_target_tokens])
+        logger.info(f'{start_idx}: Target tokens shape: {target_tokens.shape}, overlap: {target_overlap}')
+
+        all_gen_toks.append(new_target_tokens)
+
+    return target_tokens - cfg.OFFSET[ACOUSTIC]
+
 
 
 def create_omni_tokens(task, incoming_tokens, incoming_modality, speaker_id = '[spkr_unk]'):
@@ -121,7 +183,7 @@ def create_semaco_tokens(incoming_tokens, speaker_id = '[spkr_unk]'):
         text_tokenizer.encode(speaker_id)
     ])
 
-    logger.info(f'SEMACO INPUT TOKENS: {text_tokenizer.decode(input_tokens)}, shape: {input_tokens.shape}')
+    # logger.info(f'SEMACO INPUT TOKENS: {text_tokenizer.decode(input_tokens)}, shape: {input_tokens.shape}')
     return input_tokens
 
 
@@ -157,33 +219,35 @@ def _tts(text, speaker):
 
     logger.info(f'OMNI OUTPUT: {text_tokenizer.decode(omni_output)}, shape: {omni_output.shape}')
 
-    semantic_tokens = create_semaco_tokens(omni_output, speaker)
-    semantic_tokens = (torch.tensor(semantic_tokens, dtype=torch.long, device=DEVICE)[None, ...])
+    # semantic_tokens = create_semaco_tokens(omni_output, speaker)
+    # semantic_tokens = (torch.tensor(semantic_tokens, dtype=torch.long, device=DEVICE)[None, ...])
 
     # Semantic -> Acoustic
-    with CTX:
-        acoustic_tokens = semantic_acoustic_model.generate(
-            semantic_tokens,
-            max_length=3072,
-            temperature=0.7,
-            top_k=100,
-            do_sample=True
-        )
-        acoustic_tokens = acoustic_tokens.detach().cpu().numpy()[0]
-        acoustic_tokens = acoustic_tokens[semantic_tokens.shape[-1]:]
+    # with CTX:
+    #     acoustic_tokens = semantic_acoustic_model.generate(
+    #         semantic_tokens,
+    #         max_length=3072,
+    #         temperature=0.7,
+    #         top_k=100,
+    #         do_sample=True
+    #     )
+    #     acoustic_tokens = acoustic_tokens.detach().cpu().numpy()[0]
+    #     acoustic_tokens = acoustic_tokens[semantic_tokens.shape[-1]:]
 
-    end_idx = np.where(acoustic_tokens == dl.stop_token)[0]
-    if len(end_idx) >= 1:
-        end_idx = end_idx[0]
-        acoustic_tokens = acoustic_tokens[:end_idx]
+    # end_idx = np.where(acoustic_tokens == dl.stop_token)[0]
+    # if len(end_idx) >= 1:
+    #     end_idx = end_idx[0]
+    #     acoustic_tokens = acoustic_tokens[:end_idx]
 
-    acoustic_tokens = acoustic_tokens - cfg.OFFSET[ACOUSTIC]
+    # acoustic_tokens = acoustic_tokens - cfg.OFFSET[ACOUSTIC]
 
-    # Extra check to ensure that the acoustic tokens are even
-    if len(acoustic_tokens) % 2 == 1:
-        acoustic_tokens = acoustic_tokens[:-1]
+    # # Extra check to ensure that the acoustic tokens are even
+    # if len(acoustic_tokens) % 2 == 1:
+    #     acoustic_tokens = acoustic_tokens[:-1]
 
-    logger.info(f'ACOUSTIC TOKENS: {acoustic_tokens}, shape: {acoustic_tokens.shape}')
+    # logger.info(f'ACOUSTIC TOKENS: {acoustic_tokens}, shape: {acoustic_tokens.shape}')
+
+    acoustic_tokens = long_infer(semantic_acoustic_model, omni_output, speaker_id=speaker)
 
     # Acoustic -> Audio
     wav = acoustic_tokenizer.decode(torch.tensor(acoustic_tokens))
