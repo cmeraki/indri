@@ -21,60 +21,59 @@ from tts.utils import convert_audio
 
 import pdb
 
-if gr.NO_RELOAD:
-    logger = get_logger(__name__)
+logger = get_logger(__name__)
 
-    # local_dir = f'{CACHE_DIR}/models/omni_774m_tinystories'
-    # snapshot_download(f'cmeraki/tts_xl_30k_long_125m_en/semantic_acoustic/', local_dir=local_dir)
+# local_dir = f'{CACHE_DIR}/models/omni_774m_tinystories'
+# snapshot_download(f'cmeraki/tts_xl_30k_long_125m_en/semantic_acoustic/', local_dir=local_dir)
 
-    omni_model = convert_to_hf(
-        path=f'omni_less_steps.pt',
-        device=DEVICE
-    )
-    semantic_acoustic_model = convert_to_hf(
-        path=f'sem_aco.pt',
-        device=DEVICE
-    )
+omni_model = convert_to_hf(
+    path=f'omni.pt',
+    device=DEVICE
+)
+semantic_acoustic_model = convert_to_hf(
+    path=Path('~/Downloads/gpt_7000.pt').expanduser(),
+    device=DEVICE
+)
 
-    acoustic_tokenizer = get_tokenizer(ACOUSTIC, device=DEVICE)
-    text_tokenizer = get_text_tokenizer()
-    semantic_tokenizer = AudioToken(tokenizer=Tokenizers.semantic_s, device=DEVICE)
+acoustic_tokenizer = get_tokenizer(ACOUSTIC, device=DEVICE)
+text_tokenizer = get_text_tokenizer()
+semantic_tokenizer = AudioToken(tokenizer=Tokenizers.semantic_s, device=DEVICE)
 
-    dl = TaskGenerator(loader=None)
-    omni_model.generation_config.eos_token_id = dl.stop_token
-    semantic_acoustic_model.generation_config.eos_token_id = dl.stop_token
+dl = TaskGenerator(loader=None)
+omni_model.generation_config.eos_token_id = dl.stop_token
+semantic_acoustic_model.generation_config.eos_token_id = dl.stop_token
 
-    # Manual mapping of allowed speaker IDs in the app
-    SPEAKERS = {
-        "ASMR": "[spkr_youtube_en_gibiasmr_gibi_asmr]",
-        "Cartoon": "[spkr_youtube_en_spongebob_spongebob]",
-        "Jenny": "[spkr_jenny_jenny]",
-        "Random": cfg.UNKNOWN_SPEAKER_ID
-    }
+# Manual mapping of allowed speaker IDs in the app
+SPEAKERS = {
+    "ASMR": "[spkr_youtube_en_asmr_daily_bread_asmr]",
+    "Cartoon": "[spkr_mls_eng_10k_6454]",
+    "Jenny": "[spkr_jenny_jenny]",
+    "Random": cfg.UNKNOWN_SPEAKER_ID
+}
 
-    def hubert_processor(audio, processor):
-        return processor(
-            audio,
-            sampling_rate=16_000,
-            return_tensors='pt'
-        ).input_values[0]
+def hubert_processor(audio, processor):
+    return processor(
+        audio,
+        sampling_rate=16_000,
+        return_tensors='pt'
+    ).input_values[0]
 
 
-    processor = Wav2Vec2FeatureExtractor.from_pretrained('voidful/mhubert-base')
-    transform_func = partial(hubert_processor, processor=processor)
+processor = Wav2Vec2FeatureExtractor.from_pretrained('voidful/mhubert-base')
+transform_func = partial(hubert_processor, processor=processor)
 
-    def normalize_text(text):
-        text = text.lower()
-        text = text.replace("<comma>", ',')
-        text = text.replace("<period>", '.')
-        text = text.replace('<questionmark>', '?')
-        text = text.replace('<exclamationpoint>', '!')
-        text = text.replace("\n", " ")
-        return text
+def normalize_text(text):
+    text = text.lower()
+    text = text.replace("<comma>", ',')
+    text = text.replace("<period>", '.')
+    text = text.replace('<questionmark>', '?')
+    text = text.replace('<exclamationpoint>', '!')
+    text = text.replace("\n", " ")
+    return text
 
 
 def create_omni_tokens(task, incoming_tokens, incoming_modality, speaker_id = '[spkr_unk]'):
-    logger.info(f'Incoming tokens: {incoming_tokens}, shape: {incoming_tokens.shape}, modality: {incoming_modality}')
+    logger.info(f'Incoming tokens: {incoming_tokens}, shape: {incoming_tokens.shape}, task: {task}, modality: {incoming_modality}')
 
     if task == TTS:
         input_tokens = np.hstack([
@@ -150,9 +149,11 @@ def _tts(text, speaker):
         omni_output = omni_output[input_tokens.shape[-1]:]
 
     end_idx = np.where(omni_output == dl.stop_token)[0]
-    if len(end_idx) > 1:
+    if len(end_idx) >= 1:
         end_idx = end_idx[0]
         omni_output = omni_output[:end_idx]
+
+    omni_output = replace_consecutive(omni_output)
 
     logger.info(f'OMNI OUTPUT: {text_tokenizer.decode(omni_output)}, shape: {omni_output.shape}')
 
@@ -164,7 +165,7 @@ def _tts(text, speaker):
         acoustic_tokens = semantic_acoustic_model.generate(
             semantic_tokens,
             max_length=3072,
-            temperature=0.9,
+            temperature=0.7,
             top_k=100,
             do_sample=True
         )
@@ -172,7 +173,7 @@ def _tts(text, speaker):
         acoustic_tokens = acoustic_tokens[semantic_tokens.shape[-1]:]
 
     end_idx = np.where(acoustic_tokens == dl.stop_token)[0]
-    if len(end_idx) > 1:
+    if len(end_idx) >= 1:
         end_idx = end_idx[0]
         acoustic_tokens = acoustic_tokens[:end_idx]
 
@@ -249,12 +250,12 @@ with gr.Blocks() as demo:
             audio_output = gr.Audio(label="Audio Output")
             tts_button = gr.Button("Generate Speech")
 
-        with gr.Column():
-            gr.Markdown("### Speech-to-Text (ASR)")
-            speaker_asr = gr.Dropdown(list(SPEAKERS.keys()), label="Select Speaker")
-            audio_input = gr.Audio(sources=["microphone", "upload"], label="Audio Input", type="numpy")
-            text_output = gr.Textbox(label="Text Output")
-            asr_button = gr.Button("Generate Text")
+        # with gr.Column():
+        #     gr.Markdown("### Speech-to-Text (ASR)replace_consecutive")
+        #     speaker_asr = gr.Dropdown(list(SPEAKERS.keys()), label="Select Speaker")
+        #     audio_input = gr.Audio(sources=["microphone", "upload"], label="Audio Input", type="numpy")
+        #     text_output = gr.Textbox(label="Text Output")
+        #     asr_button = gr.Button("Generate Text")
 
     tts_button.click(
         fn=_tts,
@@ -262,11 +263,11 @@ with gr.Blocks() as demo:
         outputs=[audio_output]
     )
 
-    asr_button.click(
-        fn=_asr,
-        inputs=[audio_input, speaker_asr],
-        outputs=[text_output]
-    )
+    # asr_button.click(
+    #     fn=_asr,
+    #     inputs=[audio_input, speaker_asr],
+    #     outputs=[text_output]
+    # )
 
 
 if __name__ == "__main__":
