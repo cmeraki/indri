@@ -1,4 +1,5 @@
 import math
+import json
 import torch
 import gradio as gr
 import numpy as np
@@ -23,15 +24,16 @@ from tts.utils import convert_audio
 
 logger = get_logger(__name__)
 
-# local_dir = f'{CACHE_DIR}/models/omni_774m_tinystories'
-# snapshot_download(f'cmeraki/tts_xl_30k_long_125m_en/semantic_acoustic/', local_dir=local_dir)
+local_dir = f'{CACHE_DIR}/models/'
+snapshot_download(f'cmeraki/omni_774m_32k', repo_type='model', local_dir=Path(local_dir, 'omni_774m_32k'))
+# snapshot_download(f'cmeraki/sem_aco_44k', repo_type='model', local_dir=Path(local_dir, 'sem_aco_44k'))
 
 omni_model = convert_to_hf(
-    path=Path('~/Downloads/omni.pt').expanduser(),
+    path=Path(local_dir, 'omni_774m_32k', 'omni.pt'),
     device=DEVICE
 )
 semantic_acoustic_model = convert_to_hf(
-    path=Path('~/Downloads/sem_aco.pt').expanduser(),
+    path=Path('~/Downloads/sem_aco_44k.pt').expanduser(),
     device=DEVICE
 )
 omni_model.eval()
@@ -46,12 +48,11 @@ omni_model.generation_config.eos_token_id = dl.stop_token
 semantic_acoustic_model.generation_config.eos_token_id = dl.stop_token
 
 # Manual mapping of allowed speaker IDs in the app
-SPEAKERS = {
-    "ASMR": "[spkr_youtube_en_asmr_daily_bread_asmr]",
-    "Male": "[spkr_mls_eng_10k_6454]",
-    "Jenny": "[spkr_jenny_jenny]",
-    "Random": cfg.UNKNOWN_SPEAKER_ID
-}
+SPEAKERS = []
+with open('allowed_speakers.jsonl', 'r') as f:
+    for ln in f:
+        if f:
+            SPEAKERS.append(json.loads(ln)['combined'])
 
 def hubert_processor(audio, processor):
     return processor(
@@ -74,7 +75,10 @@ def normalize_text(text):
     return text
 
 
-def long_infer(model, semantic_tokens, max_source_tokens=256, speaker_id='[spkr_unk]'):
+def long_infer(semantic_tokens, speaker_id='[spkr_unk]'):
+    logger.info(f'Semantic tokens shape: {semantic_tokens.shape}, speaker_id: {speaker_id}')
+
+    max_source_tokens=1024
     all_source_toks = []
     all_gen_toks = []
     target_overlap = 0
@@ -97,9 +101,9 @@ def long_infer(model, semantic_tokens, max_source_tokens=256, speaker_id='[spkr_
         all_source_toks.append(input_tokens)
 
         with CTX:
-            new_target_tokens = model.generate(
+            new_target_tokens = semantic_acoustic_model.generate(
                 input_tokens,
-                max_new_tokens=3072,
+                max_length=3072,
                 temperature=0.8,
                 top_k=100,
                 do_sample=True,
@@ -133,9 +137,48 @@ def long_infer(model, semantic_tokens, max_source_tokens=256, speaker_id='[spkr_
     return target_tokens - cfg.OFFSET[ACOUSTIC]
 
 
+def split_infer(text, speaker_id):
+    text = normalize_text(text).split(".")[:-1]
+    sentences = [(r + ".").strip() for r in text]
+
+    logger.info(f'Sentences: {sentences}')
+
+    semantic_tokens = np.asarray([], dtype=np.int64)
+
+    for sentence in sentences:
+        text_tokens = create_omni_tokens(TTS, np.array(text_tokenizer.encode(sentence)), TEXT, speaker_id)
+        logger.info(f'TEXT SEM INPUT TOKENS: {text_tokenizer.decode(text_tokens)}, shape: {text_tokens.shape}')
+        text_tokens = (torch.tensor(text_tokens, dtype=torch.long, device=DEVICE)[None, ...])
+
+        # Text -> Semantic
+        with CTX:
+            omni_output = omni_model.generate(
+                text_tokens,
+                max_length=1024,
+                temperature=0.8,
+                top_k=100,
+                do_sample=True
+            )
+
+            omni_output = omni_output.detach().cpu().numpy()[0]
+            omni_output = omni_output[text_tokens.shape[-1]:]
+
+        end_idx = np.where(omni_output == dl.stop_token)[0]
+        if len(end_idx) >= 1:
+            end_idx = end_idx[0]
+            omni_output = omni_output[:end_idx]
+
+        omni_output = replace_consecutive(omni_output)
+        logger.info(f'TEXT SEM OUTPUT: shape: {omni_output.shape}')
+
+        semantic_tokens = np.hstack([semantic_tokens, omni_output])
+
+    logger.info(f'TEXT SEM COMPLETE OUTPUT shape: {semantic_tokens.shape}')
+
+    return semantic_tokens
 
 def create_omni_tokens(task, incoming_tokens, incoming_modality, speaker_id = '[spkr_unk]'):
-    logger.info(f'Incoming tokens: {incoming_tokens}, shape: {incoming_tokens.shape}, task: {task}, modality: {incoming_modality}')
+    logger.info(f'Tokens for text-sem, incoming tokens: {incoming_tokens}, shape: {incoming_tokens.shape}, task: {task}, modality: {incoming_modality}')
 
     if task == TTS:
         input_tokens = np.hstack([
@@ -170,7 +213,6 @@ def create_omni_tokens(task, incoming_tokens, incoming_modality, speaker_id = '[
             incoming_tokens
         ])
 
-    logger.info(f'OMNI INPUT TOKENS: {text_tokenizer.decode(input_tokens)}, shape: {input_tokens.shape}')
     return input_tokens
 
 
@@ -183,71 +225,48 @@ def create_semaco_tokens(incoming_tokens, speaker_id = '[spkr_unk]'):
         text_tokenizer.encode(speaker_id)
     ])
 
-    # logger.info(f'SEMACO INPUT TOKENS: {text_tokenizer.decode(input_tokens)}, shape: {input_tokens.shape}')
+    # logger.info(f'SEM ACO INPUT TOKENS: {text_tokenizer.decode(input_tokens)}, shape: {input_tokens.shape}')
     return input_tokens
 
 
-def _tts(text, speaker):
+def text_sem(text, speaker):
     logger.info(f'Text: {text}, Speaker: {speaker}')
 
-    speaker = SPEAKERS[speaker]
-    text = normalize_text(text)
-    text_tokens = text_tokenizer.encode(text)
-    input_tokens = create_omni_tokens(TTS, np.array(text_tokens), TEXT, speaker)
+    omni_output = split_infer(text, speaker)
 
-    input_tokens = (torch.tensor(input_tokens, dtype=torch.long, device=DEVICE)[None, ...])
+    # text = normalize_text(text)
+    # text_tokens = text_tokenizer.encode(text)
+    # input_tokens = create_omni_tokens(TTS, np.array(text_tokens), TEXT, speaker)
 
-    # Text -> Semantic
-    with CTX:
-        omni_output = omni_model.generate(
-            input_tokens,
-            max_length=1024,
-            temperature=0.8,
-            top_k=100,
-            do_sample=True
-        )
+    # input_tokens = (torch.tensor(input_tokens, dtype=torch.long, device=DEVICE)[None, ...])
 
-        omni_output = omni_output.detach().cpu().numpy()[0]
-        omni_output = omni_output[input_tokens.shape[-1]:]
-
-    end_idx = np.where(omni_output == dl.stop_token)[0]
-    if len(end_idx) >= 1:
-        end_idx = end_idx[0]
-        omni_output = omni_output[:end_idx]
-
-    omni_output = replace_consecutive(omni_output)
-
-    logger.info(f'OMNI OUTPUT: {text_tokenizer.decode(omni_output)}, shape: {omni_output.shape}')
-
-    # semantic_tokens = create_semaco_tokens(omni_output, speaker)
-    # semantic_tokens = (torch.tensor(semantic_tokens, dtype=torch.long, device=DEVICE)[None, ...])
-
-    # Semantic -> Acoustic
+    # # Text -> Semantic
     # with CTX:
-    #     acoustic_tokens = semantic_acoustic_model.generate(
-    #         semantic_tokens,
-    #         max_length=3072,
-    #         temperature=0.7,
+    #     omni_output = omni_model.generate(
+    #         input_tokens,
+    #         max_length=1024,
+    #         temperature=0.8,
     #         top_k=100,
     #         do_sample=True
     #     )
-    #     acoustic_tokens = acoustic_tokens.detach().cpu().numpy()[0]
-    #     acoustic_tokens = acoustic_tokens[semantic_tokens.shape[-1]:]
 
-    # end_idx = np.where(acoustic_tokens == dl.stop_token)[0]
+    #     omni_output = omni_output.detach().cpu().numpy()[0]
+    #     omni_output = omni_output[input_tokens.shape[-1]:]
+
+    # end_idx = np.where(omni_output == dl.stop_token)[0]
     # if len(end_idx) >= 1:
     #     end_idx = end_idx[0]
-    #     acoustic_tokens = acoustic_tokens[:end_idx]
+    #     omni_output = omni_output[:end_idx]
 
-    # acoustic_tokens = acoustic_tokens - cfg.OFFSET[ACOUSTIC]
+    # omni_output = replace_consecutive(omni_output)
 
-    # # Extra check to ensure that the acoustic tokens are even
-    # if len(acoustic_tokens) % 2 == 1:
-    #     acoustic_tokens = acoustic_tokens[:-1]
+    logger.info(f'OMNI OUTPUT: shape: {omni_output.shape}')
 
-    # logger.info(f'ACOUSTIC TOKENS: {acoustic_tokens}, shape: {acoustic_tokens.shape}')
+    return omni_output
 
-    acoustic_tokens = long_infer(semantic_acoustic_model, omni_output, speaker_id=speaker)
+
+def sem_aco(semantic_tokens, speaker):
+    acoustic_tokens = long_infer(semantic_tokens, speaker_id=speaker)
 
     # Acoustic -> Audio
     wav = acoustic_tokenizer.decode(torch.tensor(acoustic_tokens))
@@ -257,6 +276,14 @@ def _tts(text, speaker):
     save_audio(wav, tmp_audio_file, sample_rate=24000)
 
     return 24_000, wav[0].numpy()
+
+
+def _tts(text, speaker):
+
+    text_sem_output = text_sem(text, speaker)
+    sem_aco_output = sem_aco(text_sem_output, speaker)
+
+    return sem_aco_output
 
 
 def _asr(input, speaker):
@@ -309,29 +336,32 @@ with gr.Blocks() as demo:
     with gr.Row():
         with gr.Column():
             gr.Markdown("### Text-to-Speech (TTS)")
-            speaker_tts = gr.Dropdown(list(SPEAKERS.keys()), label="Select Speaker")
+            reader = gr.Dropdown(SPEAKERS, label="Select Reader")
             text_input = gr.Textbox(label="Text Input")
+            sem_output = gr.State()
+            sem_output_text = gr.Textbox(label="Semantic Output")
+            text_sem_button = gr.Button("Generate Semantic")
+
+            sem_speaker = gr.Dropdown(SPEAKERS, label="Select Speaker")
             audio_output = gr.Audio(label="Audio Output")
-            tts_button = gr.Button("Generate Speech")
+            sem_aco_button = gr.Button("Generate Speech")
 
-        # with gr.Column():
-        #     gr.Markdown("### Speech-to-Text (ASR)replace_consecutive")
-        #     speaker_asr = gr.Dropdown(list(SPEAKERS.keys()), label="Select Speaker")
-        #     audio_input = gr.Audio(sources=["microphone", "upload"], label="Audio Input", type="numpy")
-        #     text_output = gr.Textbox(label="Text Output")
-        #     asr_button = gr.Button("Generate Text")
+    def text_sem_wrapper(text, speaker):
+        sem_output = text_sem(text, speaker)
+        sem_output_text = text_tokenizer.decode(sem_output)
+        return sem_output, sem_output_text
 
-    tts_button.click(
-        fn=_tts,
-        inputs=[text_input, speaker_tts],
-        outputs=[audio_output]
+    text_sem_button.click(
+        fn=text_sem_wrapper,
+        inputs=[text_input, reader],
+        outputs=[sem_output, sem_output_text]
     )
 
-    # asr_button.click(
-    #     fn=_asr,
-    #     inputs=[audio_input, speaker_asr],
-    #     outputs=[text_output]
-    # )
+    sem_aco_button.click(
+        fn=sem_aco,
+        inputs=[sem_output, sem_speaker],
+        outputs=[audio_output]
+    )
 
 
 if __name__ == "__main__":
