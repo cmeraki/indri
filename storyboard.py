@@ -48,11 +48,15 @@ omni_model.generation_config.eos_token_id = dl.stop_token
 semantic_acoustic_model.generation_config.eos_token_id = dl.stop_token
 
 # Manual mapping of allowed speaker IDs in the app
-SPEAKERS = []
-with open('allowed_speakers.jsonl', 'r') as f:
-    for ln in f:
-        if f:
-            SPEAKERS.append(json.loads(ln)['combined'])
+STORYTELLERS = {
+    'Jenny': '[spkr_jenny_jenny]',
+    'Attenborough': '[spkr_audiobooks_attenborough_attenborough]'
+}
+
+LISTENERS = {
+    'Jenny': '[spkr_jenny_jenny]',
+    'Attenborough': '[spkr_audiobooks_attenborough_attenborough]'
+}
 
 def hubert_processor(audio, processor):
     return processor(
@@ -178,6 +182,7 @@ def split_infer(text, speaker_id):
 
     return semantic_tokens
 
+
 def create_omni_tokens(task, incoming_tokens, incoming_modality, speaker_id = '[spkr_unk]'):
     logger.info(f'Tokens for text-sem, incoming tokens: {incoming_tokens}, shape: {incoming_tokens.shape}, task: {task}, modality: {incoming_modality}')
 
@@ -235,32 +240,6 @@ def text_sem(text, speaker):
 
     omni_output = split_infer(text, speaker)
 
-    # text = normalize_text(text)
-    # text_tokens = text_tokenizer.encode(text)
-    # input_tokens = create_omni_tokens(TTS, np.array(text_tokens), TEXT, speaker)
-
-    # input_tokens = (torch.tensor(input_tokens, dtype=torch.long, device=DEVICE)[None, ...])
-
-    # # Text -> Semantic
-    # with CTX:
-    #     omni_output = omni_model.generate(
-    #         input_tokens,
-    #         max_length=1024,
-    #         temperature=0.8,
-    #         top_k=100,
-    #         do_sample=True
-    #     )
-
-    #     omni_output = omni_output.detach().cpu().numpy()[0]
-    #     omni_output = omni_output[input_tokens.shape[-1]:]
-
-    # end_idx = np.where(omni_output == dl.stop_token)[0]
-    # if len(end_idx) >= 1:
-    #     end_idx = end_idx[0]
-    #     omni_output = omni_output[:end_idx]
-
-    # omni_output = replace_consecutive(omni_output)
-
     logger.info(f'OMNI OUTPUT: shape: {omni_output.shape}')
 
     return omni_output
@@ -287,80 +266,36 @@ def _tts(text, speaker):
     return sem_aco_output
 
 
-def _asr(input, speaker):
-    speaker = SPEAKERS[speaker]
+def generate_story(topic, storyteller, listener):
+    storyteller = STORYTELLERS[storyteller]
+    listener = LISTENERS[listener]
 
-    sr, y = input
-    y = y.astype(np.float32)
-    y /= np.max(np.abs(y))
-    y = y.reshape(1, -1)
-    y = torch.tensor(y)
+    story = open('story.json').read()
+    story = json.loads(story)
+    story_audio = np.array([])
 
-    aud = convert_audio(y, sr, target_sr=16_000, target_channels=1)
-    aud = transform_func(aud)
+    for ln in story:
+        _, audio_out = _tts(ln["text"], storyteller)
+        story_audio = np.hstack([story_audio, audio_out])
 
-    logger.info(f'Audio shape: {aud.shape}')
-
-    audio_tokens = semantic_tokenizer.encode(aud).numpy()[0][0]
-    logger.info(f'Audio tokens shape: {audio_tokens.shape}')
-    audio_tokens = replace_consecutive(audio_tokens)
-    input_tokens = create_omni_tokens(ASR, audio_tokens, AUDIO, speaker)
-
-    input_tokens = (torch.tensor(input_tokens, dtype=torch.long, device=DEVICE)[None, ...])
-
-    # Semantic -> Text
-    with CTX:
-        omni_output = omni_model.generate(
-            input_tokens,
-            max_length=1024,
-            temperature=0.8,
-            top_k=100,
-            do_sample=True
-        )
-
-        omni_output = omni_output.detach().cpu().numpy()[0]
-        omni_output = omni_output[input_tokens.shape[-1]:]
-
-    end_idx = np.where(omni_output == dl.stop_token)[0]
-    if len(end_idx) > 1:
-        end_idx = end_idx[0]
-        omni_output = omni_output[:end_idx]
-
-    logger.info(f'OMNI OUTPUT: {text_tokenizer.decode(omni_output)}, shape: {omni_output.shape}')
-
-    return text_tokenizer.decode(omni_output)
+    return 24000, story_audio
 
 
 with gr.Blocks() as demo:
-    gr.Markdown("## Omni")
+    gr.Markdown("## Listen to a Story")
 
     with gr.Row():
         with gr.Column():
-            gr.Markdown("### Text-to-Speech (TTS)")
-            reader = gr.Dropdown(SPEAKERS, label="Select Reader")
-            text_input = gr.Textbox(label="Text Input")
-            sem_output = gr.State()
-            sem_output_text = gr.Textbox(label="Semantic Output")
-            text_sem_button = gr.Button("Generate Semantic")
+            storyteller = gr.Dropdown(list(STORYTELLERS.keys()), label="Select Storyteller", value='Jenny')
+            listener = gr.Dropdown(list(LISTENERS.keys()), label="Select Listener", value='Jenny')
+            topic = gr.Textbox(label="Topic")
 
-            sem_speaker = gr.Dropdown(SPEAKERS, label="Select Speaker")
-            audio_output = gr.Audio(label="Audio Output")
-            sem_aco_button = gr.Button("Generate Speech")
+            generate_button = gr.Button("New story")
+            audio_output = gr.Audio(label="Story")
 
-    def text_sem_wrapper(text, speaker):
-        sem_output = text_sem(text, speaker)
-        sem_output_text = text_tokenizer.decode(sem_output)
-        return sem_output, sem_output_text
-
-    text_sem_button.click(
-        fn=text_sem_wrapper,
-        inputs=[text_input, reader],
-        outputs=[sem_output, sem_output_text]
-    )
-
-    sem_aco_button.click(
-        fn=sem_aco,
-        inputs=[sem_output, sem_speaker],
+    generate_button.click(
+        fn=generate_story,
+        inputs=[topic, storyteller, listener],
         outputs=[audio_output]
     )
 
