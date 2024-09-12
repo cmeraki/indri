@@ -54,3 +54,4 @@
 {"dataset": "youtube_en_asmr", "speaker": "daily_bread_asmr", "combined": "[spkr_youtube_en_asmr_daily_bread_asmr]"}
 {"dataset": "youtube_en_gibiasmr", "speaker": "gibi_asmr", "combined": "[spkr_youtube_en_gibiasmr_gibi_asmr]"}
 {"dataset": "youtube_en_spongebob", "speaker": "spongebob", "combined": "[spkr_youtube_en_spongebob_spongebob]"}
+{"dataset": "audiobooks_attenborough", "speaker": "attenborough", "combined": "[spkr_audiobooks_attenborough_attenborough]"}

@@ -4,11 +4,12 @@ import torch
 import gradio as gr
 import numpy as np
 from pathlib import Path
-from functools import partial
-from huggingface_hub import snapshot_download
+from enum import Enum
+from typing import List
+from openai import OpenAI
+from pydantic import BaseModel
 from encodec.utils import save_audio
-from audiotoken import AudioToken, Tokenizers
-from transformers import Wav2Vec2FeatureExtractor
+from huggingface_hub import snapshot_download
 
 from configs.commons import Config as cfg
 from configs.commons import DEVICE, CACHE_DIR, CTX
@@ -21,7 +22,6 @@ from datalib.tokenlib import get_tokenizer
 
 from tts.utils import convert_audio
 
-
 logger = get_logger(__name__)
 
 # local_dir = f'{CACHE_DIR}/models/'
@@ -29,11 +29,11 @@ logger = get_logger(__name__)
 # snapshot_download(f'cmeraki/sem_aco_44k', repo_type='model', local_dir=Path(local_dir, 'sem_aco_44k'))
 
 omni_model = convert_to_hf(
-    path=Path('~/Downloads/text_sem_21k_911.pt').expanduser(),
+    path=Path('~/Downloads/text_sem_40k_911.pt').expanduser(),
     device=DEVICE
 )
 semantic_acoustic_model = convert_to_hf(
-    path=Path('~/Downloads/sem_aco_28k_911.pt').expanduser(),
+    path=Path('~/Downloads/sem_aco_57k_911.pt').expanduser(),
     device=DEVICE
 )
 omni_model.eval()
@@ -41,33 +41,52 @@ semantic_acoustic_model.eval()
 
 acoustic_tokenizer = get_tokenizer(ACOUSTIC, device=DEVICE)
 text_tokenizer = get_text_tokenizer()
-semantic_tokenizer = AudioToken(tokenizer=Tokenizers.semantic_s, device=DEVICE)
+llm_client = OpenAI()
 
 dl = TaskGenerator(loader=None)
 omni_model.generation_config.eos_token_id = dl.stop_token
 semantic_acoustic_model.generation_config.eos_token_id = dl.stop_token
 
+SYS_PROMPT = """
+Create a short conversation between a Narrator and a Listener on the topic provided by the user. The discussion should:
+
+1. Use easy words that 5-10 year olds can understand
+2. Have short turns for each speaker
+3. Include 3-6 back-and-forth exchanges
+4. Be educational but fun, focusing on the given topic
+
+Guidelines:
+
+1. Keep sentences short and use simple language throughout the conversation
+2. The Narrator should explain things clearly and simply
+4. The Listener should ask curious questions a child might have
+5. Avoid complex terminology
+
+Remember to adapt the complexity of the explanation to suit a 5-10 year old audience, regardless of the topic provided.
+"""
+
+# Classes required for structured response from LLM
+class Speaker(Enum):
+    NARRATOR = 'Narrator'
+    LISTENER = 'Listener'
+
+class Dialogue(BaseModel):
+    speaker: Speaker
+    text: str
+
+class Discussion(BaseModel):
+    dialogue: List[Dialogue]
+
 # Manual mapping of allowed speaker IDs in the app
-STORYTELLERS = {
+NARRATOR = {
     'Jenny': '[spkr_jenny_jenny]',
     'Attenborough': '[spkr_audiobooks_attenborough_attenborough]'
 }
 
-LISTENERS = {
+LISTENER = {
     'Jenny': '[spkr_jenny_jenny]',
     'Attenborough': '[spkr_audiobooks_attenborough_attenborough]'
 }
-
-def hubert_processor(audio, processor):
-    return processor(
-        audio,
-        sampling_rate=16_000,
-        return_tensors='pt'
-    ).input_values[0]
-
-
-processor = Wav2Vec2FeatureExtractor.from_pretrained('voidful/mhubert-base')
-transform_func = partial(hubert_processor, processor=processor)
 
 def normalize_text(text):
     text = text.lower()
@@ -79,8 +98,8 @@ def normalize_text(text):
     return text
 
 
-def long_infer(semantic_tokens, speaker_id='[spkr_unk]'):
-    logger.info(f'Semantic tokens shape: {semantic_tokens.shape}, speaker_id: {speaker_id}')
+def sem_aco(semantic_tokens, speaker_id='[spkr_unk]', prompt_tokens: dict = None):
+    logger.info(f'Semantic tokens shape: {semantic_tokens.shape}, speaker: {speaker_id}')
 
     max_source_tokens=1024
     all_source_toks = []
@@ -95,7 +114,7 @@ def long_infer(semantic_tokens, speaker_id='[spkr_unk]'):
         source_cut = semantic_tokens[start_idx: end_idx]
         target_cut = target_tokens[-target_overlap:]
 
-        input_tokens = create_semaco_tokens(source_cut, speaker_id)
+        input_tokens = create_semaco_tokens(source_cut, speaker_id, prompt_tokens)
         input_tokens = np.hstack([
             input_tokens, target_cut
         ])
@@ -108,7 +127,7 @@ def long_infer(semantic_tokens, speaker_id='[spkr_unk]'):
             new_target_tokens = semantic_acoustic_model.generate(
                 input_tokens,
                 max_length=3072,
-                temperature=0.7,
+                temperature=0.8,
                 top_k=100,
                 do_sample=True,
             ).detach().cpu().numpy()[0]
@@ -128,29 +147,34 @@ def long_infer(semantic_tokens, speaker_id='[spkr_unk]'):
 
         target_overlap = new_target_tokens.shape[-1]
         if start_idx == 0:
-            target_overlap = (max_source_tokens-stride) * new_target_tokens.shape[-1]/max_source_tokens
+            target_overlap = (max_source_tokens - stride - len(prompt_tokens.get(SEMANTIC, []))) * new_target_tokens.shape[-1]/max_source_tokens
             target_overlap = math.ceil(target_overlap)
         if target_overlap % 2 == 1:
             target_overlap += 1
 
         target_tokens = np.hstack([target_tokens, new_target_tokens])
-        logger.info(f'{start_idx}: Target tokens shape: {target_tokens.shape}, overlap: {target_overlap}')
+        logger.info(f'{start_idx}: Overlap: {target_overlap}')
+        logger.info(f'{start_idx}: SEM ACO OUTPUT SHAPE: {new_target_tokens.shape}')
 
         all_gen_toks.append(new_target_tokens)
 
-    return target_tokens - cfg.OFFSET[ACOUSTIC]
+    logger.info(f'SEM ACO COMPLETE OUTPUT SHAPE: {target_tokens.shape}')
+    return target_tokens
 
 
-def split_infer(text, speaker_id):
-    text = normalize_text(text).split(".")[:-1]
-    sentences = [(r + ".").strip() for r in text]
+def text_sem(text, speaker_id):
+    logger.info(f'Text: {text}, Speaker: {speaker_id}')
+
+    text = normalize_text(text)#.split(".")[:-1]
+    #sentences = [(r + ".").strip() for r in text]
+    sentences = [text]
 
     logger.info(f'Sentences: {sentences}')
 
     semantic_tokens = np.asarray([], dtype=np.int64)
 
     for sentence in sentences:
-        text_tokens = create_omni_tokens(TTS, np.array(text_tokenizer.encode(sentence)), TEXT, speaker_id)
+        text_tokens = create_omni_tokens(np.array(text_tokenizer.encode(sentence)), speaker_id)
         logger.info(f'TEXT SEM INPUT TOKENS: {text_tokenizer.decode(text_tokens)}, shape: {text_tokens.shape}')
         text_tokens = (torch.tensor(text_tokens, dtype=torch.long, device=DEVICE)[None, ...])
 
@@ -159,7 +183,7 @@ def split_infer(text, speaker_id):
             omni_output = omni_model.generate(
                 text_tokens,
                 max_length=1024,
-                temperature=0.7,
+                temperature=0.5,
                 top_k=100,
                 do_sample=True
             )
@@ -173,80 +197,18 @@ def split_infer(text, speaker_id):
             omni_output = omni_output[:end_idx]
 
         omni_output = replace_consecutive(omni_output)
-        logger.info(f'TEXT SEM OUTPUT: shape: {omni_output.shape}')
+        logger.info(f'TEXT SEM OUTPUT SHAPE: {omni_output.shape}')
 
         semantic_tokens = np.hstack([semantic_tokens, omni_output])
 
     semantic_tokens = replace_consecutive(semantic_tokens)
-    logger.info(f'TEXT SEM COMPLETE OUTPUT shape: {semantic_tokens.shape}')
+    logger.info(f'TEXT SEM COMPLETE OUTPUT SHAPE: {semantic_tokens.shape}')
 
     return semantic_tokens
 
 
-def create_omni_tokens(task, incoming_tokens, incoming_modality, speaker_id = '[spkr_unk]'):
-    logger.info(f'Tokens for text-sem, incoming tokens: {incoming_tokens}, shape: {incoming_tokens.shape}, task: {task}, modality: {incoming_modality}')
-
-    if task == TTS:
-        input_tokens = np.hstack([
-            dl.text_modality_token,
-            incoming_tokens,
-            dl.convert_token,
-            dl.semantic_modality_token,
-            text_tokenizer.encode(speaker_id)
-        ])
-
-    elif task == ASR:
-        incoming_tokens = incoming_tokens + cfg.OFFSET[SEMANTIC]
-        input_tokens = np.hstack([
-            dl.semantic_modality_token,
-            text_tokenizer.encode(speaker_id),
-            incoming_tokens,
-            dl.convert_token,
-            dl.text_modality_token
-        ])
-
-    elif task == CONTINUE and incoming_modality == TEXT:
-        input_tokens = np.hstack([
-            dl.text_modality_token,
-            incoming_tokens
-        ])
-
-    elif task == CONTINUE and incoming_modality == AUDIO:
-        incoming_tokens = incoming_tokens + cfg.OFFSET[SEMANTIC]
-        input_tokens = np.hstack([
-            dl.semantic_modality_token,
-            text_tokenizer.encode(speaker_id),
-            incoming_tokens
-        ])
-
-    return input_tokens
-
-
-def create_semaco_tokens(incoming_tokens, speaker_id = '[spkr_unk]'):
-    input_tokens = np.hstack([
-        dl.semantic_modality_token,
-        incoming_tokens,
-        dl.convert_token,
-        dl.acoustic_modality_token,
-        text_tokenizer.encode(speaker_id)
-    ])
-
-    # logger.info(f'SEM ACO INPUT TOKENS: {text_tokenizer.decode(input_tokens)}, shape: {input_tokens.shape}')
-    return input_tokens
-
-
-def text_sem(text, speaker):
-    logger.info(f'Text: {text}, Speaker: {speaker}')
-
-    omni_output = split_infer(text, speaker)
-
-    logger.info(f'OMNI OUTPUT: shape: {omni_output.shape}')
-
-    return omni_output
-
-
-def sem_aco(semantic_tokens, speaker):
-    acoustic_tokens = long_infer(semantic_tokens, speaker_id=speaker)
+def aco_audio(acoustic_tokens):
+    acoustic_tokens = acoustic_tokens - cfg.OFFSET[ACOUSTIC]
 
     # Acoustic -> Audio
     wav = acoustic_tokenizer.decode(torch.tensor(acoustic_tokens))
@@ -258,27 +220,97 @@ def sem_aco(semantic_tokens, speaker):
     return 24_000, wav[0].numpy()
 
 
-def _tts(text, speaker):
+def create_omni_tokens(incoming_tokens, speaker_id):
 
-    text_sem_output = text_sem(text, speaker)
-    sem_aco_output = sem_aco(text_sem_output, speaker)
+    input_tokens = np.hstack([
+        dl.text_modality_token,
+        incoming_tokens,
+        dl.convert_token,
+        dl.semantic_modality_token,
+        text_tokenizer.encode(speaker_id)
+    ])
 
-    return sem_aco_output
+    return input_tokens
 
 
-def generate_story(topic, storyteller, listener):
-    storyteller = STORYTELLERS[storyteller]
-    listener = LISTENERS[listener]
+def create_semaco_tokens(incoming_tokens, speaker_id, prompt_tokens: dict = None):
 
-    story = open('story.json').read()
-    story = json.loads(story)
-    story_audio = np.array([])
+    if prompt_tokens:
+        input_tokens = np.hstack([
+            dl.semantic_modality_token,
+            prompt_tokens[SEMANTIC],
+            incoming_tokens,
+            dl.convert_token,
+            dl.acoustic_modality_token,
+            text_tokenizer.encode(speaker_id),
+            prompt_tokens[ACOUSTIC],
+        ])
+        return input_tokens
 
-    for ln in story:
-        _, audio_out = _tts(ln["text"], storyteller)
-        story_audio = np.hstack([story_audio, audio_out])
+    input_tokens = np.hstack([
+        dl.semantic_modality_token,
+        incoming_tokens,
+        dl.convert_token,
+        dl.acoustic_modality_token,
+        text_tokenizer.encode(speaker_id)
+    ])
 
-    return 24000, story_audio
+    return input_tokens
+
+
+def llm(topic):
+    completion = llm_client.beta.chat.completions.parse(
+        model="gpt-4o-2024-08-06",
+        messages=[
+            {"role": "system", "content": SYS_PROMPT.strip()},
+            {"role": "user", "content": f"Topic: {topic}. Remember to use short sentences in every turn."},
+        ],
+        response_format=Discussion,
+    )
+
+    discussion: Discussion = completion.choices[0].message.parsed
+
+    return discussion.dialogue
+
+
+def tts(text, speaker, prompt_audio):
+
+    prompt_tokens = {}
+
+    text_sem_output = text_sem(text, LISTENER['Jenny'])
+    sem_aco_output = sem_aco(text_sem_output, speaker, prompt_audio)
+    aco_audio_output = aco_audio(sem_aco_output)
+
+    prompt_tokens[SEMANTIC] = text_sem_output
+    prompt_tokens[ACOUSTIC] = sem_aco_output
+
+    return aco_audio_output, prompt_tokens
+
+
+def generate_discussion(topic, narrator, listener):
+    narrator = NARRATOR[narrator]
+    listener = LISTENER[listener]
+
+    discussion = llm(topic)
+    discussion_audio = np.array([])
+
+    narrator_prompt_audio = {}
+    listener_prompt_audio = {}
+
+    for dialogue in discussion:
+        if dialogue.speaker == Speaker.NARRATOR:
+            (_, audio_out), narrator_prompt_audio = tts(dialogue.text, narrator, narrator_prompt_audio)
+
+        else:
+            (_, audio_out), listener_prompt_audio = tts(dialogue.text, listener, listener_prompt_audio)
+
+        # Add artificial silence to the audio output
+        discussion_audio = np.hstack([discussion_audio, np.pad(audio_out, (0, np.random.randint(1, 24000)))])
+
+    discussion_txt = [t.text for t in discussion]
+    discussion_txt = '\n'.join(discussion_txt)
+
+    return (24000, discussion_audio), discussion_txt
 
 
 with gr.Blocks() as demo:
@@ -286,20 +318,20 @@ with gr.Blocks() as demo:
 
     with gr.Row():
         with gr.Column():
-            storyteller = gr.Dropdown(list(STORYTELLERS.keys()), label="Select Storyteller", value='Jenny')
-            listener = gr.Dropdown(list(LISTENERS.keys()), label="Select Listener", value='Jenny')
+            narrator = gr.Dropdown(list(NARRATOR.keys()), label="Select Storyteller", value='Attenborough')
+            listener = gr.Dropdown(list(LISTENER.keys()), label="Select Listener", value='Jenny')
             topic = gr.Textbox(label="Topic")
 
-            generate_button = gr.Button("New story")
-            audio_output = gr.Audio(label="Story")
+            generate_button = gr.Button("New discussion")
+            story_output = gr.Textbox(label="Story")
+            audio_output = gr.Audio(label="Discussion", streaming=True)
 
     generate_button.click(
-        fn=generate_story,
-        inputs=[topic, storyteller, listener],
-        outputs=[audio_output]
+        fn=generate_discussion,
+        inputs=[topic, narrator, listener],
+        outputs=[audio_output, story_output]
     )
 
 
 if __name__ == "__main__":
     demo.launch(server_name="0.0.0.0", server_port=6006)
-    # _tts(text='how are you', speaker='Jenny')

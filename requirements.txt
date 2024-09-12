@@ -8,3 +8,5 @@ librosa
 gradio
 audiotoken
 datasets
+openai
+pydantic

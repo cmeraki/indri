@@ -29,11 +29,11 @@ logger = get_logger(__name__)
 # snapshot_download(f'cmeraki/sem_aco_44k', repo_type='model', local_dir=Path(local_dir, 'sem_aco_44k'))
 
 omni_model = convert_to_hf(
-    path=Path('~/Downloads/text_sem_21k_911.pt').expanduser(),
+    path=Path('~/Downloads/text_sem_40k_911.pt').expanduser(),
     device=DEVICE
 )
 semantic_acoustic_model = convert_to_hf(
-    path=Path('~/Downloads/sem_aco_28k_911.pt').expanduser(),
+    path=Path('~/Downloads/sem_aco_57k_911.pt').expanduser(),
     device=DEVICE
 )
 omni_model.eval()
@@ -104,7 +104,7 @@ def long_infer(semantic_tokens, speaker_id='[spkr_unk]'):
             new_target_tokens = semantic_acoustic_model.generate(
                 input_tokens,
                 max_length=3072,
-                temperature=0.7,
+                temperature=0.8,
                 top_k=100,
                 do_sample=True,
             ).detach().cpu().numpy()[0]
@@ -138,8 +138,11 @@ def long_infer(semantic_tokens, speaker_id='[spkr_unk]'):
 
 
 def split_infer(text, speaker_id):
-    text = normalize_text(text).split(".")[:-1]
-    sentences = [(r + ".").strip() for r in text]
+    text = normalize_text(text)
+    sentences = [text]
+
+    # text = text.split(".")[:-1]
+    # sentences = [(r + ".").strip() for r in text]
 
     logger.info(f'Sentences: {sentences}')
 
@@ -155,7 +158,7 @@ def split_infer(text, speaker_id):
             omni_output = omni_model.generate(
                 text_tokens,
                 max_length=1024,
-                temperature=0.7,
+                temperature=0.5,
                 top_k=100,
                 do_sample=True
             )
