@@ -221,6 +221,7 @@ def create_omni_tokens(task, incoming_tokens, incoming_modality, speaker_id = '[
 
 
 def create_semaco_tokens(incoming_tokens, speaker_id = '[spkr_unk]'):
+    print("TEXT==============",speaker_id)
     input_tokens = np.hstack([
         dl.semantic_modality_token,
         incoming_tokens,
@@ -274,7 +275,7 @@ def sem_aco(semantic_tokens, speaker):
 
     # Acoustic -> Audio
     wav = acoustic_tokenizer.decode(torch.tensor(acoustic_tokens))
-    wav = wav[0].cpu()
+    wav = wav.cpu()
 
     tmp_audio_file = f'omni.wav'
     save_audio(wav, tmp_audio_file, sample_rate=24000)

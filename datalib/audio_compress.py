@@ -13,6 +13,7 @@ def reduce_audio_bitrate(f):
         '-y',
         '-v', '0',
         '-i', input_file,
+        '-ac', '1',
         '-acodec', 'libmp3lame',
         '-b:a', target_bitrate,
         output_file

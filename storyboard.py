@@ -212,7 +212,7 @@ def aco_audio(acoustic_tokens):
 
     # Acoustic -> Audio
     wav = acoustic_tokenizer.decode(torch.tensor(acoustic_tokens))
-    wav = wav[0].cpu()
+    wav = wav.cpu()
 
     tmp_audio_file = f'omni.wav'
     save_audio(wav, tmp_audio_file, sample_rate=24000)
@@ -277,7 +277,7 @@ def tts(text, speaker, prompt_audio):
 
     prompt_tokens = {}
 
-    text_sem_output = text_sem(text, LISTENER['Jenny'])
+    text_sem_output = text_sem(text, '[spkr_unk]')
     sem_aco_output = sem_aco(text_sem_output, speaker, prompt_audio)
     aco_audio_output = aco_audio(sem_aco_output)
 
@@ -305,7 +305,7 @@ def generate_discussion(topic, narrator, listener):
             (_, audio_out), listener_prompt_audio = tts(dialogue.text, listener, listener_prompt_audio)
 
         # Add artificial silence to the audio output
-        discussion_audio = np.hstack([discussion_audio, np.pad(audio_out, (0, np.random.randint(1, 24000)))])
+        discussion_audio = np.hstack([discussion_audio, np.pad(audio_out, (0, np.random.randint(1, 6000)))])
 
     discussion_txt = [t.text for t in discussion]
     discussion_txt = '\n'.join(discussion_txt)

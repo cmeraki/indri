@@ -33,11 +33,11 @@ def test_prepare(dsname, num):
 
 def prepare(dsname, num):
     dataset = Dataset(repo_id=dsname)
-    prep_method = get_prepare_method(dsname)
+    # prep_method = get_prepare_method(dsname)
     
-    for item in iter_hf_item(dsname, num, streaming=False):
-        sample = prep_method(item)
-        dataset.add_sample(sample)
+    # for item in iter_hf_item(dsname, num, streaming=False):
+    #     sample = prep_method(item)
+    #     dataset.add_sample(sample)
     
     dataset.tokenize()
     dataset.upload()

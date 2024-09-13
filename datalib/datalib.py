@@ -116,6 +116,9 @@ class Dataset:
             hf_repo_id = self.repo_id
 
         for name in self.dirs:
+            if name == 'audio':
+                print('skipping audio')
+                continue
             dir = self.dirs[name]
             print(f'archiving {name}:{dir}')
 
@@ -183,6 +186,7 @@ class Dataset:
         
         with open(metadata_path) as metadata:
             for line in metadata:
+                print(line)
                 sample = Sample().from_json(line)
                 yield sample
 
@@ -256,6 +260,6 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     dataset = Dataset(repo_id=args.dataset)
-    dataset.download()
+    dataset.download(audio=True)
     for elem in dataset.iter_dataset():
         print(elem)

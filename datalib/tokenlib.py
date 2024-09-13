@@ -15,6 +15,7 @@ from pathlib import Path
 from tqdm import tqdm
 from PIL import Image
 from encodec.utils import convert_audio
+from vocos import Vocos
 from configs.constants import *
 
 torch.backends.cuda.matmul.allow_tf32 = True
@@ -107,6 +108,8 @@ class EncodecTokenizer:
 
         self.device = device
         self.model = self.load_model(self.output_bandwidth, self.device)
+        self.vocos = Vocos.from_pretrained("charactr/vocos-encodec-24khz")
+
 
     @staticmethod
     def load_model(bandwidth, device):
@@ -116,12 +119,6 @@ class EncodecTokenizer:
         model.to(device)
         if 'cuda' in device:
             model = torch.compile(model)
-
-        # Preload bark model
-        _ = bark_load_model(
-            model_type="fine",
-            use_gpu=True if 'cuda' in device else False
-        )
 
         return model
 
@@ -142,8 +139,6 @@ class EncodecTokenizer:
 
         codes = torch.cat([encoded[0] for encoded in encoded_frames], dim=-1)
         codes = codes.detach()[0].cpu().numpy()
-        # codes = self.codebook_encoding(codes)
-        # codes = self.add_start_token(codes)
         return codes
 
     def deserialize_tokens(self, tokens):
@@ -163,10 +158,10 @@ class EncodecTokenizer:
         assert (tokens.min() >= 0)
         assert (tokens.max() <= 1024 - 1)
 
-        good_audio = bark.api.generate_fine(x_coarse_gen=tokens, silent=False)
-        good_audio = np.expand_dims(good_audio, axis=0)
-        good_audio = torch.from_numpy(good_audio).to(device=self.device)
-        wav = self.model.decode([(good_audio, None)])
+        features = self.vocos.codes_to_features(torch.Tensor(tokens).to(torch.int16))
+        print(features)
+        bandwidth_id = torch.tensor([0])
+        wav = self.vocos.decode(features, bandwidth_id=bandwidth_id)
         wav = wav.detach()
         return wav
 
