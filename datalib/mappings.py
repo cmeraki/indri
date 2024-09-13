@@ -124,4 +124,36 @@ def prepare_gigaspeech(item):
     sample.sampling_rate = item['audio']['sampling_rate']
     return sample
 
+# {'__key__': 'EN_B00000_S00000_W000000', 
+#  '__url__': 'hf://datasets/amphion/Emilia-Dataset@bcaad00d13e7c101485990a46e88f5884ffed3fc/EN/EN-B000000.tar', 
+#  'json': {'dnsmos': 3.2927, 
+#           'duration': 6.264, 
+#           'id': 'EN_B00000_S00000_W000000', 
+#           'language': 'en', 
+#           'speaker': 'EN_B00000_S00000', 
+#           'text': " You can help my mother and you- No. You didn't leave a bad situation back home to get caught up in another one here. What happened to you, Los Angeles?",
+#           'wav': 'EN_B00000/EN_B00000_S00000/mp3/EN_B00000_S00000_W000000.mp3'
+#           },
+          
+# 'mp3': {'path': 'EN_B00000_S00000_W000000.mp3',
+#         'array': array([-0.00156609, -0.00178264, -0.00098045, ..., -0.00193841, -0.00217433, -0.00080763]),
+#         'sampling_rate': 24000}
+# }
+
+@register(dsname='emilia', split='en', hfds='amphion/Emilia-Dataset')
+def prepare_gigaspeech(item):
+    audio_format = '.wav'
+    id=item['json']['id']
+    
+    sample = Dataset.create_sample(id=id, audio_format=audio_format)
+    sample.raw_text = item['json']['text']
+    sample.speaker_id = item['json']['speaker']
+
+    sample.audio_array = item['mp3']['array']
+    sample.sampling_rate = item['mp3']['sampling_rate']
+    sample.duration = item['json']['duration']
+    sample.metadata = item['json']
+    return sample
+
+
 print(dataset_info)
