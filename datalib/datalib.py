@@ -71,14 +71,11 @@ class Dataset:
         
         self.ids = None
 
-    def download(self, hf_repo_id=None, audio=False):
+    def download(self, hf_repo_id=None, dirs=[ACOUSTIC, SEMANTIC, AUDIO, ANNOTATIONS]):
         if hf_repo_id is None:
             hf_repo_id = self.repo_id
 
-        for name in self.dirs:
-            if (name =='audio') and (audio == False):
-                continue
-
+        for name in dirs:
             tar_name = f'{name}.tar'
             hf_hub_download(repo_id=f'{self.hf_user}/{hf_repo_id}',
                             token=self.hf_token,
@@ -86,10 +83,7 @@ class Dataset:
                             local_dir=self.local_path,
                             filename=tar_name)
 
-        for name in self.dirs:
-            if (name =='audio') and (audio == False):
-                continue
-
+        for name in dirs:
             tar_fname = self.local_path / f'{name}.tar'
             print(tar_fname)
             if not tar_fname.exists():
@@ -150,10 +144,16 @@ class Dataset:
     def get_absolute_path(self, path: str):
         return self.local_path / path
 
-    def add_sample(self, sample: Sample):
+    def add_metadata(self, sample: Sample):
         if self.metadata_writer is None:
             self.metadata_writer = open(self.metadata_path, 'a')
-
+        
+        sample.audio_array = None
+        sample = sample.to_json()
+        self.metadata_writer.write(sample + '\n')
+        self.metadata_writer.flush()
+    
+    def add_audio(self, sample: Sample):
         audio_array = torch.tensor(sample.audio_array, dtype=torch.float32)
         audio_array = audio_array.unsqueeze(dim=0)
 
@@ -174,10 +174,10 @@ class Dataset:
             backend='ffmpeg',
             compression=CodecConfig(bit_rate=64000)
         )
-        sample.audio_array = None
-        sample = sample.to_json()
-        self.metadata_writer.write(sample + '\n')
-        self.metadata_writer.flush()
+
+    def add_sample(self, sample: Sample):
+        self.add_audio(sample)
+        self.add_metadata(sample)
 
     def iter_dataset(self):
         metadata_path = self.metadata_path
