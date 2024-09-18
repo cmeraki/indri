@@ -8,35 +8,34 @@ import glob
 import numpy as np
 import torch
 
-torch.set_float32_matmul_precision("high")
-
-model = whisper.load_model("large-v3")
-model.forward = torch.compile(model.forward, mode="reduce-overhead", fullgraph=True)
-
-
 def get_transcript(audio_file):
-    result = model.transcribe(audio_file, verbose=False)
+    with torch.inference_mode():
+        result = model.transcribe(audio_file, verbose=False, language="en")
     return result
+
 
 def make_sentences(result):
     sentences = []
     sent = []
     for segment in tqdm(result['segments'], desc='making sentences..'): 
-        sent.append(segment)
         text = segment['text']
-        if text[-1] in {".", "。", "!", "！", "?", "？"}:
-            start = sent[0]['start']
-            end = sent[-1]['end']
-            _text = "".join([e['text'] for e in sent])
-            sent = {'start': start, 'end': end, 'text': _text}
-            sentences.append(sent)
-            sent = []
-    
+        if text:
+            sent.append(segment)
+            if text[-1] in {".", "。", "!", "！", "?", "？"}:
+                start = sent[0]['start']
+                end = sent[-1]['end']
+                _text = "".join([e['text'] for e in sent])
+                sent = {'start': start, 'end': end, 'text': _text}
+                sentences.append(sent)
+                sent = []
+        
     return sentences
 
 def process(dsname, input_audio_dir, speaker_name):
     dataset = Dataset(repo_id=dsname)
-    audio_files = glob.glob(input_audio_dir + '*.wav')
+    audio_files = list(glob.glob(input_audio_dir + '*.wav'))
+    audio_files += list(glob.glob(input_audio_dir + '*.mp3'))
+    
     audio_format = '.wav'
 
     print("num audio files", len(audio_files))
@@ -74,6 +73,11 @@ if __name__ == '__main__':
     parser.add_argument('--audio', type=str, required=True, help='Chose one of 3 modes')
     parser.add_argument('--speaker', type=str, required=False, default=None, help='name of speaker if known')
     parser.add_argument('--dsname', type=str, required=True, help='name of your dataset. will be uploaded to cmeraki/')
+    parser.add_argument('--device', type=str, required=True, help='name of device')
 
+    
     args = parser.parse_args()
+    model = whisper.load_model("medium", device=args.device)
+    model.eval()
+    
     process(args.dsname, args.audio, args.speaker)
