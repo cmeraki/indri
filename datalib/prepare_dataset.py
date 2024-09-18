@@ -13,22 +13,9 @@ def iter_hf_item(dsname, num=1, streaming=True):
     dinfo = dataset_info[dsname]
     dconfig = {k:dinfo[k] for k in ['path', 'split', 'name']}
     
-    chosen_files = ['084', '089', '088', '085', '080', '087', '082', '081', 
-                    '086', '083', '068', '063', '060', '066', '067', '064', 
-                    '069', '061', '062', '108', '065', '091', '101', '103', 
-                    '106', '093', '094', '109', '105', '104', '100', '096', 
-                    '097', '102', '107', '095', '099', '098', '090', '092', 
-                    '073', '079', '072', '077', '071', '070', '561', '075', 
-                    '562', '076', '074', '078', '567', '568', '566', '560', 
-                    '563', '564', '565', '569', '133', '137', '551']
-
-    chosen_files = ['EN/EN-B000' + x + '.tar' for x in chosen_files]
-    print(chosen_files)
     dataset = load_dataset(
-                path=dconfig['path'],
-                streaming=False,
-                data_files={"en": chosen_files}, split="en")
-                # **dconfig)
+                streaming=streaming,
+                **dconfig)
     
     dataset = iter(dataset)
 

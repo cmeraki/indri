@@ -29,7 +29,7 @@ logger = get_logger(__name__)
 # snapshot_download(f'cmeraki/sem_aco_44k', repo_type='model', local_dir=Path(local_dir, 'sem_aco_44k'))
 
 omni_model = convert_to_hf(
-    path=Path('~/Downloads/text_sem_40k_911.pt').expanduser(),
+    path=Path('~/Downloads/omni_text_sem_good_readin_large.pt').expanduser(),
     device=DEVICE
 )
 semantic_acoustic_model = convert_to_hf(
@@ -80,11 +80,13 @@ class Discussion(BaseModel):
 # Manual mapping of allowed speaker IDs in the app
 NARRATOR = {
     'Jenny': '[spkr_jenny_jenny]',
+    'Asmr': '[spkr_youtube_en_asmr_daily_bread_asmr]',
     'Attenborough': '[spkr_audiobooks_attenborough_attenborough]'
 }
 
 LISTENER = {
     'Jenny': '[spkr_jenny_jenny]',
+    'Asmr': '[spkr_youtube_en_asmr_daily_bread_asmr]',
     'Attenborough': '[spkr_audiobooks_attenborough_attenborough]'
 }
 
@@ -101,7 +103,7 @@ def normalize_text(text):
 def sem_aco(semantic_tokens, speaker_id='[spkr_unk]', prompt_tokens: dict = None):
     logger.info(f'Semantic tokens shape: {semantic_tokens.shape}, speaker: {speaker_id}')
 
-    max_source_tokens=1024
+    max_source_tokens=1024  
     all_source_toks = []
     all_gen_toks = []
     target_overlap = 0
@@ -277,7 +279,7 @@ def tts(text, speaker, prompt_audio):
 
     prompt_tokens = {}
 
-    text_sem_output = text_sem(text, '[spkr_unk]')
+    text_sem_output = text_sem(text, '[spkr_hifi_tts_9017]')
     sem_aco_output = sem_aco(text_sem_output, speaker, prompt_audio)
     aco_audio_output = aco_audio(sem_aco_output)
 
@@ -303,6 +305,10 @@ def generate_discussion(topic, narrator, listener):
 
         else:
             (_, audio_out), listener_prompt_audio = tts(dialogue.text, listener, listener_prompt_audio)
+        
+        narrator_prompt_audio = {}
+        listener_prompt_audio = {}
+
 
         # Add artificial silence to the audio output
         discussion_audio = np.hstack([discussion_audio, np.pad(audio_out, (0, np.random.randint(1, 6000)))])

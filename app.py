@@ -29,7 +29,7 @@ logger = get_logger(__name__)
 # snapshot_download(f'cmeraki/sem_aco_44k', repo_type='model', local_dir=Path(local_dir, 'sem_aco_44k'))
 
 omni_model = convert_to_hf(
-    path=Path('~/Downloads/text_sem_40k_911.pt').expanduser(),
+    path=Path('~/Downloads/omni_text_sem_good_readin_large.pt').expanduser(),
     device=DEVICE
 )
 semantic_acoustic_model = convert_to_hf(
