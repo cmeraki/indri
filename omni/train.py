@@ -58,7 +58,7 @@ def get_text_tokenizer():
                                        speaker=sample['speaker'])
         
         text_tokenizer.tokenizer.add_tokens(speaker_id)
-        # logger.info(f'Added token {speaker_id}, {text_tokenizer.encode(speaker_id)}')
+        logger.info(f'Added token {speaker_id}, {text_tokenizer.encode(speaker_id)}')
 
     text_tokenizer.tokenizer.add_tokens(cfg.UNKNOWN_SPEAKER_ID)
     return text_tokenizer
@@ -84,7 +84,7 @@ class DataLoader:
                 metadata[_metadata['id']] = _metadata
                 if maxfiles and (num_line > maxfiles):
                     break
-
+            
         logger.info(f"num metadata lines: {len(metadata)}")
 
         self.ids = list(metadata.keys())
@@ -164,7 +164,7 @@ class DataLoader:
         return speaker_id
 
 class TaskGenerator:
-    def __init__(self, loader) -> None:
+    def __init__(self, loader, full_batches) -> None:
         self.text_tokenizer = get_text_tokenizer()
         self.loader = loader
         # make all task tokens
@@ -174,7 +174,8 @@ class TaskGenerator:
         self.text_modality_token = self.text_tokenizer.encode(cfg.MODALITY_TOKENS[TEXT])
         self.semantic_modality_token = self.text_tokenizer.encode(cfg.MODALITY_TOKENS[SEMANTIC])
         self.acoustic_modality_token = self.text_tokenizer.encode(cfg.MODALITY_TOKENS[ACOUSTIC])
-
+        self.full_batches = full_batches
+    
     def get_text_completion(self):
         tokens = np.hstack([
             self.text_modality_token,
@@ -296,9 +297,10 @@ class TaskGenerator:
 
         if (self.acoustic_tokens is not None) and (self.semantic_tokens is not None):
             methods = [self.get_semantic_acoustic,
-                        self.get_semantic_completion_without_speaker_id, 
-                        self.get_acoustic_semantic,
-                        self.get_acoustic_completion]
+                        # self.get_semantic_completion_without_speaker_id, 
+                        # self.get_acoustic_semantic,
+                        # self.get_acoustic_completion
+                      ]
 
         result = None
         task = None
@@ -312,7 +314,7 @@ class TaskGenerator:
     def set_generator(self, generator):
         self.sample_generator = generator
 
-    def load_batch(self, split, block_size, batch_size):
+    def load_batch_full(self, split, block_size, batch_size):
         x = np.zeros(shape=(batch_size, block_size), dtype=np.int64)
         y = np.zeros(shape=(batch_size, block_size), dtype=np.int64)
 
@@ -342,6 +344,7 @@ class TaskGenerator:
                 if length_now > block_size + 1:
                     break
             
+            
             batch_tasks.append(sample_tasks)
             sample_tokens = np.hstack(sample_tokens)
 
@@ -350,10 +353,49 @@ class TaskGenerator:
 
         return x, y, batch_tasks
 
+    
+    def load_batch(self, split, block_size, batch_size):
+        x = np.zeros(shape=(batch_size, block_size), dtype=np.int64)
+        y = np.zeros(shape=(batch_size, block_size), dtype=np.int64)
+
+        # prepopulate with pad tokens
+        # so we don't have to pad later
+        x = x + self.stop_token
+        y = y + self.stop_token
+
+        # replacing leet code with unleet code
+        batch_tasks = []
+        for batch_idx in range(batch_size):
+            sample_tokens = []
+            sample_tasks = []
+            length_now = 0
+
+            while True:
+                self.set_data(split=split)
+                tokens, task = self.sample_generator()
+                # print(task)
+                if tokens is not None:
+                    break
+                
+            batch_tasks.append(task)
+            _x = tokens[0:block_size]
+            _y = tokens[1:block_size + 1]
+            
+            x[batch_idx][:len(_x)] = _x 
+            y[batch_idx][:len(_y)] = _y
+
+        return x, y, batch_tasks
+
     def get_batch(self, split, device, block_size, batch_size):
-        x, y, tasks = self.load_batch(split,
-                               block_size=block_size,
-                               batch_size=batch_size)
+        if self.full_batches:
+            x, y, tasks = self.load_batch_full(split,
+                                   block_size=block_size,
+                                   batch_size=batch_size)
+
+        else:
+            x, y, tasks = self.load_batch(split,
+                                   block_size=block_size,
+                                   batch_size=batch_size)
 
         x = torch.from_numpy(x)
         y = torch.from_numpy(y)
@@ -366,23 +408,38 @@ class TaskGenerator:
         return x, y, tasks
 
 def train_text_semantic(device, dataset_dirs):
-    out_dir = Path(f'{CACHE_DIR}/models/omni_text_sem/')
+    out_dir = Path(f'{CACHE_DIR}/models/omni_text_sem_good_readin_medium/')
 
     data_generator = DataLoader(
-        datasets_dirs=dataset_dirs,
-        maxfiles=None,
+        datasets_dirs=dataset_dirs
     )
 
-    taskgen = TaskGenerator(loader=data_generator)
+    taskgen = TaskGenerator(loader=data_generator, full_batches=True)
     taskgen.set_generator(taskgen.get_sample_text_semantic)
 
-    pretrained = 'mdouglas/llmc-gpt2-774M-150B'
+    # from tqdm import tqdm
+    # for i in tqdm(range(100000)):
+    #     taskgen.get_batch(block_size=1024, batch_size=32, device='cpu', split='train')
+        # print(data_generator.bad_reads, data_generator.total_reads)
+
+    pretrained = 'gpt2-medium'
     vocab_size = cfg.VOCAB_SIZE
 
-    model = GPT.from_pretrained(model_type=pretrained)
-    model.expand_vocab(new_vocab_size=vocab_size)
-    model.to(device)
+    # model = GPT.from_pretrained(model_type=pretrained)
+    # model.expand_vocab(new_vocab_size=vocab_size)
+    # model.to(device)
 
+
+    model = get_model(
+        model_type='gpt2-medium',
+        vocab_size=vocab_size,
+        block_size=1024,
+        bias=True,
+        device=device,
+        path='/home/.cache/indri/models/omni_text_sem_good_readin_medium/gpt_last.pt'
+    )
+
+    
     model = torch.compile(model)
 
     logger.info(model)
@@ -394,23 +451,22 @@ def train_text_semantic(device, dataset_dirs):
     gpt_train(model,
               get_batch=taskgen.get_batch,
               out_dir=out_dir,
-              steps=60000,
+              steps=100000,
               block_size=1024,
               eval_interval=1000,
-              batch_size=8,
+              batch_size=16,
               grad_accum_steps=4,
               device=device)
 
 
 def train_semantic_acoustic(device, dataset_dirs):
-    out_dir = Path(f'{CACHE_DIR}/models/omni_sem_aco/')
+    out_dir = Path(f'{CACHE_DIR}/models/omni_sem_aco_911_mukesh/')
 
     data_generator = DataLoader(
-        datasets_dirs=dataset_dirs,
-        maxfiles=100000,
+        datasets_dirs=dataset_dirs
     )
 
-    taskgen = TaskGenerator(loader=data_generator)
+    taskgen = TaskGenerator(loader=data_generator, full_batches=False)
     taskgen.set_generator(taskgen.get_sample_semantic_acoustic)
 
     # for i in range(100000):
@@ -420,11 +476,12 @@ def train_semantic_acoustic(device, dataset_dirs):
     vocab_size = cfg.VOCAB_SIZE
 
     model = get_model(
-        model_type='gpt2',
+        model_type='gpt2-medium',
         vocab_size=vocab_size,
         block_size=3072,
         bias=True,
-        device=device
+        device=device,
+        path='/home/.cache/indri/models/omni_sem_aco_911_mukesh/gpt_last.pt'
     )
 
     model = torch.compile(model)
@@ -438,40 +495,71 @@ def train_semantic_acoustic(device, dataset_dirs):
     gpt_train(model,
               get_batch=taskgen.get_batch,
               out_dir=out_dir,
-              steps=60000,
+              steps=70000,
               block_size=3072,
               eval_interval=1000,
               batch_size=8,
-              grad_accum_steps=4,
-              device=device)
+              grad_accum_steps=2,
+              device=device, 
+              start_step=60000)
+
+def read_files_once(device, dataset_dirs):
+
+    loader = DataLoader(
+        datasets_dirs=dataset_dirs,
+        maxfiles=None,
+    )
+
+    from tqdm import tqdm
+    for id in tqdm(loader.ids['train']):
+        # speaker_id = loader.load_speaker_id(id)
+        # semantic_tokens = loader.load_semantic_tokens(id)
+        # acoustic_tokens = loader.load_acoustic_tokens(id)
+        try:
+            text_tokens = loader.load_text_tokens(id)
+        except Exception as e:
+            print(id, e)
+
+    # for i in range(100000):
+    #     taskgen.get_batch(block_size=3072, batch_size=8, device='cpu', split='train')
+    #     print(data_generator.bad_reads, data_generator.total_reads)
+
 
 if __name__ == '__main__':
     from argparse import ArgumentParser
-
+    
     parser = ArgumentParser()
     parser.add_argument('--device', type=str, default=DEVICE)
     parser.add_argument('--type', type=str, required=True, help='one of textsem/semaco')
     
     args = parser.parse_args()
     
-
-    dataset_names = ['jenny', 
-                     'expresso', 
-                     'mls_eng_10k', 
-                     'peoples_speech_tokens', 
+    reading_datasets = ['jenny',
+                     'expresso',
+                     'mls_eng_10k',
                      'gs_xl_en_tokens',
                      'hifi_tts',
-                     'youtube_en_gibiasmr', 
-                     'youtube_en_asmr']
+                    ]
     
-    # dataset_names = ['gs_xl_en_tokens']
-
-    dirs = [Path(f'{CACHE_DIR}/{dsname}/') for dsname in dataset_names]
-
-
+    speaking_datasets = ['youtube_en_asmr', 
+                     'peoples_speech_tokens', 
+                     'audiobooks_attenborough',]
+    
     if args.type == 'textsem':
+        datasets = reading_datasets
+        print("Datasets=", datasets)
+        dirs = [Path(f'{CACHE_DIR}/{dsname}/') for dsname in datasets]
         train_text_semantic(args.device, dataset_dirs=dirs)
 
     if args.type == 'semaco':
+        datasets = reading_datasets + speaking_datasets
+        print("Datasets=", datasets)
+        dirs = [Path(f'{CACHE_DIR}/{dsname}/') for dsname in datasets]
         train_semantic_acoustic(args.device, dataset_dirs=dirs)
+
+    if args.type == 'read':
+        datasets = reading_datasets + speaking_datasets
+        print("Datasets=", datasets)
+        dirs = [Path(f'{CACHE_DIR}/{dsname}/') for dsname in datasets]
+        read_files_once(args.device, dataset_dirs=dirs)
     
