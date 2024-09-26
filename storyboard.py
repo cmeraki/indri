@@ -29,7 +29,7 @@ logger = get_logger(__name__)
 # snapshot_download(f'cmeraki/sem_aco_44k', repo_type='model', local_dir=Path(local_dir, 'sem_aco_44k'))
 
 omni_model = convert_to_hf(
-    path=Path('~/Downloads/omni_text_sem_good_readin_large.pt').expanduser(),
+    path=Path('~/Downloads/omni_text_sem_good_readin_large_indians.pt').expanduser(),
     device=DEVICE
 )
 semantic_acoustic_model = convert_to_hf(
@@ -43,7 +43,7 @@ acoustic_tokenizer = get_tokenizer(ACOUSTIC, device=DEVICE)
 text_tokenizer = get_text_tokenizer()
 llm_client = OpenAI()
 
-dl = TaskGenerator(loader=None)
+dl = TaskGenerator(loader=None, full_batches=True)
 omni_model.generation_config.eos_token_id = dl.stop_token
 semantic_acoustic_model.generation_config.eos_token_id = dl.stop_token
 

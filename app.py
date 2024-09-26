@@ -29,13 +29,14 @@ logger = get_logger(__name__)
 # snapshot_download(f'cmeraki/sem_aco_44k', repo_type='model', local_dir=Path(local_dir, 'sem_aco_44k'))
 
 omni_model = convert_to_hf(
-    path=Path('~/Downloads/omni_text_sem_good_readin_large.pt').expanduser(),
+    path=Path('~/Downloads/omni_text_sem_good_readin_large_indians.pt').expanduser(),
     device=DEVICE
 )
 semantic_acoustic_model = convert_to_hf(
     path=Path('~/Downloads/sem_aco_57k_911.pt').expanduser(),
     device=DEVICE
 )
+
 omni_model.eval()
 semantic_acoustic_model.eval()
 
@@ -43,7 +44,7 @@ acoustic_tokenizer = get_tokenizer(ACOUSTIC, device=DEVICE)
 text_tokenizer = get_text_tokenizer()
 semantic_tokenizer = AudioToken(tokenizer=Tokenizers.semantic_s, device=DEVICE)
 
-dl = TaskGenerator(loader=None)
+dl = TaskGenerator(loader=None, full_batches=False)
 omni_model.generation_config.eos_token_id = dl.stop_token
 semantic_acoustic_model.generation_config.eos_token_id = dl.stop_token
 
@@ -139,10 +140,10 @@ def long_infer(semantic_tokens, speaker_id='[spkr_unk]'):
 
 def split_infer(text, speaker_id):
     text = normalize_text(text)
-    sentences = [text]
+    # sentences = [text]
 
-    # text = text.split(".")[:-1]
-    # sentences = [(r + ".").strip() for r in text]
+    text = text.split(".")[:-1]
+    sentences = [(r + ".").strip() for r in text]
 
     logger.info(f'Sentences: {sentences}')
 
@@ -181,42 +182,16 @@ def split_infer(text, speaker_id):
 
     return semantic_tokens
 
-def create_omni_tokens(task, incoming_tokens, incoming_modality, speaker_id = '[spkr_unk]'):
+def create_omni_tokens(incoming_tokens, incoming_modality, speaker_id = '[spkr_unk]'):
     logger.info(f'Tokens for text-sem, incoming tokens: {incoming_tokens}, shape: {incoming_tokens.shape}, task: {task}, modality: {incoming_modality}')
 
-    if task == TTS:
-        input_tokens = np.hstack([
-            dl.text_modality_token,
-            incoming_tokens,
-            dl.convert_token,
-            dl.semantic_modality_token,
-            text_tokenizer.encode(speaker_id)
-        ])
-
-    elif task == ASR:
-        incoming_tokens = incoming_tokens + cfg.OFFSET[SEMANTIC]
-        input_tokens = np.hstack([
-            dl.semantic_modality_token,
-            text_tokenizer.encode(speaker_id),
-            incoming_tokens,
-            dl.convert_token,
-            dl.text_modality_token
-        ])
-
-    elif task == CONTINUE and incoming_modality == TEXT:
-        input_tokens = np.hstack([
-            dl.text_modality_token,
-            incoming_tokens
-        ])
-
-    elif task == CONTINUE and incoming_modality == AUDIO:
-        incoming_tokens = incoming_tokens + cfg.OFFSET[SEMANTIC]
-        input_tokens = np.hstack([
-            dl.semantic_modality_token,
-            text_tokenizer.encode(speaker_id),
-            incoming_tokens
-        ])
-
+    input_tokens = np.hstack([
+        dl.text_modality_token,
+        incoming_tokens,
+        dl.convert_token,
+        dl.semantic_modality_token,
+        text_tokenizer.encode(speaker_id)
+    ])
     return input_tokens
 
 
@@ -281,58 +256,6 @@ def sem_aco(semantic_tokens, speaker):
     save_audio(wav, tmp_audio_file, sample_rate=24000)
 
     return 24_000, wav[0].numpy()
-
-
-def _tts(text, speaker):
-
-    text_sem_output = text_sem(text, speaker)
-    sem_aco_output = sem_aco(text_sem_output, speaker)
-
-    return sem_aco_output
-
-
-def _asr(input, speaker):
-    speaker = SPEAKERS[speaker]
-
-    sr, y = input
-    y = y.astype(np.float32)
-    y /= np.max(np.abs(y))
-    y = y.reshape(1, -1)
-    y = torch.tensor(y)
-
-    aud = convert_audio(y, sr, target_sr=16_000, target_channels=1)
-    aud = transform_func(aud)
-
-    logger.info(f'Audio shape: {aud.shape}')
-
-    audio_tokens = semantic_tokenizer.encode(aud).numpy()[0][0]
-    logger.info(f'Audio tokens shape: {audio_tokens.shape}')
-    audio_tokens = replace_consecutive(audio_tokens)
-    input_tokens = create_omni_tokens(ASR, audio_tokens, AUDIO, speaker)
-
-    input_tokens = (torch.tensor(input_tokens, dtype=torch.long, device=DEVICE)[None, ...])
-
-    # Semantic -> Text
-    with CTX:
-        omni_output = omni_model.generate(
-            input_tokens,
-            max_length=1024,
-            temperature=0.8,
-            top_k=100,
-            do_sample=True
-        )
-
-        omni_output = omni_output.detach().cpu().numpy()[0]
-        omni_output = omni_output[input_tokens.shape[-1]:]
-
-    end_idx = np.where(omni_output == dl.stop_token)[0]
-    if len(end_idx) > 1:
-        end_idx = end_idx[0]
-        omni_output = omni_output[:end_idx]
-
-    logger.info(f'OMNI OUTPUT: {text_tokenizer.decode(omni_output)}, shape: {omni_output.shape}')
-
-    return text_tokenizer.decode(omni_output)
 
 
 with gr.Blocks() as demo:

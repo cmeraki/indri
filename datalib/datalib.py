@@ -33,7 +33,7 @@ class Sample:
         return self
 
     def to_json(self):
-        return json.dumps(asdict(self))
+        return json.dumps(asdict(self), ensure_ascii=False)
 
 
 class Dataset:

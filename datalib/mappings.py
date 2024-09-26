@@ -141,7 +141,7 @@ def prepare_gigaspeech(item):
 # }
 
 @register(dsname='emilia', split='en', hfds='amphion/Emilia-Dataset')
-def prepare_gigaspeech(item):
+def prepare_emilia(item):
     audio_format = '.wav'
     id=item['json']['id']
     
@@ -155,5 +155,59 @@ def prepare_gigaspeech(item):
     sample.metadata = item['json']
     return sample
 
+
+@register(dsname='libritts', hfds='parler-tts/libritts_r_filtered', name='clean', split='train.clean.360')
+def prepare_libritts(item):
+    audio_format = '.wav'
+    id=item['id']
+    
+    sample = Dataset.create_sample(id=id, audio_format=audio_format)
+    sample.raw_text = item['text_original']
+    sample.speaker_id = item['speaker_id']
+
+    sample.audio_array = item['audio']['array']
+    sample.sampling_rate = item['audio']['sampling_rate']
+    return sample
+
+@register(dsname='libritts_100', hfds='parler-tts/libritts_r_filtered', name='clean', split='train.clean.100')
+def prepare_libritts_100(item):
+    audio_format = '.wav'
+    id=item['id']
+    
+    sample = Dataset.create_sample(id=id, audio_format=audio_format)
+    sample.raw_text = item['text_original']
+    sample.speaker_id = item['speaker_id']
+
+    sample.audio_array = item['audio']['array']
+    sample.sampling_rate = item['audio']['sampling_rate']
+    return sample
+
+
+@register(dsname='libritts_other', hfds='parler-tts/libritts_r_filtered', name='other', split='train.other.500')
+def prepare_libritts_other(item):
+    audio_format = '.wav'
+    id=item['id']
+    
+    sample = Dataset.create_sample(id=id, audio_format=audio_format)
+    sample.raw_text = item['text_original']
+    sample.speaker_id = item['speaker_id']
+
+    sample.audio_array = item['audio']['array']
+    sample.sampling_rate = item['audio']['sampling_rate']
+    return sample
+
+
+@register(dsname='shrutilipi', hfds='collabora/ai4bharat-shrutilipi', split='train')
+def prepare_libritts_other(item):
+    audio_format = '.wav'
+    id=item['audio']['path'].replace('.wav', '')
+    
+    sample = Dataset.create_sample(id=id, audio_format=audio_format)
+    sample.raw_text = item['transcription']
+    sample.speaker_id = None
+
+    sample.audio_array = item['audio']['array']
+    sample.sampling_rate = item['audio']['sampling_rate']
+    return sample
 
 print(dataset_info)
