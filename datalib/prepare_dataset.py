@@ -3,11 +3,33 @@ from datalib.mappings import dataset_info
 from datalib.datalib import Dataset
 from tqdm import tqdm
 import math
+import torch
+torch.multiprocessing.set_sharing_strategy('file_system')
+from torch.utils.data import DataLoader
 
 
 def get_prepare_method(dsname):
     return dataset_info[dsname]['method']
 
+def convert_to_list_of_dicts(data):
+    """Converts a dictionary of lists to a list of dictionaries."""
+
+    result = []
+    keys = list(data.keys())
+
+    for i in range(len(data[keys[0]])):
+        row = {}
+        for key in keys:
+            e = data[key][i]
+            if isinstance(e, dict):
+                for k in e:
+                    e[k] = e[k][0]
+            else:
+                e = e[0]
+            row[key] = e
+        result.append(row)
+
+    return result
 
 def iter_hf_item(dsname, num=1, streaming=True):
     dinfo = dataset_info[dsname]
@@ -17,12 +39,22 @@ def iter_hf_item(dsname, num=1, streaming=True):
                 streaming=streaming,
                 **dconfig)
     
-    dataset = iter(dataset)
-
-    for idx, item in tqdm(enumerate(dataset), desc='iterating over dataset...'):
-        yield item    
-        if idx >= num:
+    dataset = dataset.batch(batch_size=4)
+    dataloader = DataLoader(dataset, collate_fn=None, num_workers=4)
+    
+    progress_bar = tqdm(total=None, desc="processing dataset..", ncols=80)
+    for batch in dataloader:
+        flat_elems = convert_to_list_of_dicts(batch)
+        progress_bar.update(len(flat_elems))
+        for elem in flat_elems:
+            yield elem
+        if progress_bar.n > num:
+            progress_bar.close()
             break
+    
+    progress_bar.close()
+        
+        
 
 def test_prepare(dsname, num):
     prep_method = get_prepare_method(dsname)
@@ -39,7 +71,6 @@ def prepare(dsname, num):
         sample = prep_method(item)
         dataset.add_sample(sample)
     
-    dataset.tokenize()
     dataset.upload()
 
 if __name__ == '__main__':

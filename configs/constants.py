@@ -1,5 +1,4 @@
-SEMANTIC = 'semantic'
-ACOUSTIC = 'acoustic'
+MIMI = 'mimi'
 TEXT = 'text'
 AUDIO = 'audio'
 IMAGE = 'image'
