@@ -29,7 +29,8 @@ Path(CACHE_DIR).mkdir(exist_ok=True, parents=True)
 
 print('Cache directory at: ', CACHE_DIR)
 
-SPEAKER_FILE = 'allowed_speakers.jsonl'
+configs_dir = Path(__file__).parent 
+SPEAKER_FILE = configs_dir / 'allowed_speakers.jsonl'
 
 class Config:
     coarse_codebooks = 2
@@ -38,7 +39,7 @@ class Config:
     VOCAB_SIZES = {
         TEXT: 50257,
         SEMANTIC: 1000,
-        ACOUSTIC: 2048,
+        ACOUSTIC: 2048*4,
     }
 
     OFFSET = {

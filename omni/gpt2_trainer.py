@@ -29,7 +29,7 @@ def get_ctx(device_type):
 
 def get_lr(it):
     warmup_iters = 2000
-    lr_decay_iters = 600000
+    lr_decay_iters = 10000
     min_lr = 6e-5
     learning_rate = 6e-4
 
