@@ -1,4 +1,4 @@
-from datasets import load_dataset
+from datasets import load_dataset, Audio
 from datalib.mappings import dataset_info
 from datalib.datalib import Dataset
 from tqdm import tqdm
@@ -31,29 +31,55 @@ def convert_to_list_of_dicts(data):
 
     return result
 
+
+def collate_fn(batch):
+    return batch
+
 def iter_hf_item(dsname, num=1, streaming=True):
     dinfo = dataset_info[dsname]
     dconfig = {k:dinfo[k] for k in ['path', 'split', 'name']}
     
     dataset = load_dataset(
-                streaming=streaming,
-                **dconfig)
+                    streaming=streaming,
+                    num_proc=8,
+                    **dconfig)
     
-    dataset = dataset.batch(batch_size=4)
-    dataloader = DataLoader(dataset, collate_fn=None, num_workers=4)
-    
-    progress_bar = tqdm(total=None, desc="processing dataset..", ncols=80)
-    for batch in dataloader:
-        flat_elems = convert_to_list_of_dicts(batch)
-        progress_bar.update(len(flat_elems))
-        for elem in flat_elems:
-            yield elem
-        if progress_bar.n > num:
-            progress_bar.close()
-            break
-    
-    progress_bar.close()
+    dataset = dataset.cast_column("audio", Audio(sampling_rate=24000, mono=True))
+
+    if streaming:
+        dataset = dataset.batch(batch_size=16)
+        dataloader = DataLoader(dataset, collate_fn=None, num_workers=8, prefetch_factor=4)
         
+        progress_bar = tqdm(total=None, desc="processing dataset..", ncols=80)
+        for batch in dataloader:
+            flat_elems = convert_to_list_of_dicts(batch)
+            progress_bar.update(len(flat_elems))
+            for elem in flat_elems:
+                yield elem
+            if progress_bar.n > num:
+                progress_bar.close()
+                break
+        
+        progress_bar.close()
+
+    else:
+        # dataset = dataset.with_format("torch")
+        dataloader = DataLoader(dataset, batch_size=4, num_workers=4, collate_fn=collate_fn, prefetch_factor=2)
+        
+        progress_bar = tqdm(total=None, desc="processing dataset..", ncols=80)
+        for batch in dataloader:
+            progress_bar.update(len(batch))
+            for elem in batch:
+                yield elem
+            if progress_bar.n > num:
+                progress_bar.close()
+                break
+
+        for elem in tqdm(iter(dataset)):
+            yield elem
+        
+        progress_bar.close()
+            
         
 
 def test_prepare(dsname, num):
@@ -67,7 +93,7 @@ def prepare(dsname, num):
     dataset = Dataset(repo_id=dsname)
     prep_method = get_prepare_method(dsname)
     
-    for item in iter_hf_item(dsname, num, streaming=True):
+    for item in iter_hf_item(dsname, num, streaming=False):
         sample = prep_method(item)
         dataset.add_sample(sample)
     

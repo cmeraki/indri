@@ -46,10 +46,8 @@ def speaker_id_format(dataset, speaker):
 
 def get_text_tokenizer():
     text_tokenizer = get_tokenizer(type=TEXT, device='cpu')
-    for idx in range(cfg.VOCAB_SIZES[SEMANTIC]):
-        text_tokenizer.tokenizer.add_tokens(f'[sem_{idx}]')
 
-    for idx in range(cfg.VOCAB_SIZES[ACOUSTIC]):
+    for idx in range(cfg.VOCAB_SIZES[MIMI]):
         text_tokenizer.tokenizer.add_tokens(f'[aco_{idx}]')
 
     for tok in list(cfg.MODALITY_TOKENS.values()) + list(cfg.TASK_TOKENS.values()) + [cfg.STOP_TOKEN]:
@@ -72,8 +70,8 @@ class DataLoader:
         self.dataset_dirs = datasets_dirs
         self.load_parallel_data(self.dataset_dirs, maxfiles=maxfiles)
         self.text_tokenizer = get_text_tokenizer()
-        self.bad_reads = {SEMANTIC: 0 , ACOUSTIC: 0}
-        self.total_reads = {SEMANTIC: 0, ACOUSTIC: 0}
+        self.bad_reads = {MIMI: 0}
+        self.total_reads = {MIMI: 0}
 
     def load_parallel_data(self, dirs, maxfiles=None):
         metadata = {}
@@ -125,17 +123,17 @@ class DataLoader:
         return path
 
     def load_acoustic_tokens(self, id):
-        self.total_reads[ACOUSTIC] += 1
+        self.total_reads[MIMI] += 1
         tokens = None
         
-        path = str(self.get_tokens_path(id, ACOUSTIC)).replace(ACOUSTIC, 'mimi')
+        path = str(self.get_tokens_path(id, MIMI)).replace(MIMI, 'mimi')
         tokens = np.load(path).astype(np.int64)
         tokens = tokens[:4]
         tokens = codebook_encoding(tokens, 2048)
         tokens = np.reshape(tokens, -1)
-        tokens = tokens + cfg.OFFSET[ACOUSTIC]
+        tokens = tokens + cfg.OFFSET[MIMI]
     
-        self.bad_reads[ACOUSTIC] += 1
+        self.bad_reads[MIMI] += 1
 
         return tokens
     
@@ -164,7 +162,7 @@ class TaskGenerator:
         self.stop_token = self.text_tokenizer.encode(cfg.STOP_TOKEN)
 
         self.text_modality_token = self.text_tokenizer.encode(cfg.MODALITY_TOKENS[TEXT])
-        self.acoustic_modality_token = self.text_tokenizer.encode(cfg.MODALITY_TOKENS[ACOUSTIC])
+        self.acoustic_modality_token = self.text_tokenizer.encode(cfg.MODALITY_TOKENS[MIMI])
     
     def get_text_acoustic(self):
         tokens = np.hstack([
@@ -246,7 +244,7 @@ def train_text_semantic(device, dataset_dirs):
     #     print(batch)
         # print(data_generator.bad_reads, data_generator.total_reads)
 
-    pretrained = 'cmeraki/gpt2-124M-400B'
+    pretrained = 'mdouglas/llmc-gpt2-774M-150B'
     vocab_size = cfg.VOCAB_SIZE
 
     model = GPT.from_pretrained(model_type=pretrained)
@@ -268,7 +266,7 @@ def train_text_semantic(device, dataset_dirs):
               steps=10000,
               block_size=1024,
               eval_interval=1000,
-              batch_size=32,
+              batch_size=4,
               grad_accum_steps=2,
               device=device)
 
@@ -283,7 +281,7 @@ if __name__ == '__main__':
     
     args = parser.parse_args()
     
-    reading_datasets = ['shrutilipi']
+    reading_datasets = ['gigaspeech']
     
     speaking_datasets = []
     

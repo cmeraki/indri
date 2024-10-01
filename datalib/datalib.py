@@ -147,17 +147,7 @@ class Dataset:
         self.metadata_writer.flush()
     
     def add_audio(self, sample: Sample):
-        audio_array = torch.tensor(sample.audio_array, dtype=torch.float32)
-        audio_array = audio_array.unsqueeze(dim=0)
-
-        audio_array = convert_audio(
-            audio_array,
-            sr=sample.sampling_rate,
-            target_sr=24000,
-            target_channels=1
-        )
-
-        audio_tokens = self.audio_tokenizer.encode(audio_array.reshape(-1))
+        audio_tokens = self.audio_tokenizer.encode(sample.audio_array.astype(np.float32).reshape(-1))
         audio_tokens_path = self.get_absolute_path(sample.mimi_tokens) 
         np.save(audio_tokens_path, audio_tokens)
 

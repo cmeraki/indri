@@ -28,7 +28,7 @@ class MimiTokenizer:
     def __init__(self, device):    
         self.device = device
         self.model = MimiModel.from_pretrained("kyutai/mimi")
-        self.model = torch.compile(self.model)
+        # self.model = torch.compile(self.model)
         self.model.to(device)
         self.model.eval()
         self.feature_extractor = AutoFeatureExtractor.from_pretrained("kyutai/mimi", device=device)

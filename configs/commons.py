@@ -38,14 +38,12 @@ class Config:
 
     VOCAB_SIZES = {
         TEXT: 50257,
-        SEMANTIC: 1000,
-        ACOUSTIC: 2048*4,
+        MIMI: 2048*4,
     }
 
     OFFSET = {
         TEXT: 0,
-        SEMANTIC: VOCAB_SIZES[TEXT],
-        ACOUSTIC: VOCAB_SIZES[TEXT] + VOCAB_SIZES[SEMANTIC],
+        MIMI: VOCAB_SIZES[TEXT],
     }
 
     TASK_TOKENS = {
@@ -55,8 +53,7 @@ class Config:
 
     MODALITY_TOKENS = {
         TEXT: '[text]',
-        SEMANTIC: '[semantic]',
-        ACOUSTIC: '[acoustic]',
+        MIMI: '[mimi]',
     }
 
     UNKNOWN_SPEAKER_ID = '[spkr_unk]'

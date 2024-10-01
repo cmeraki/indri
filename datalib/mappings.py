@@ -15,7 +15,7 @@ def register(dsname, hfds, split=None, name=None):
     return decorator
 
 
-@register(dsname='jenny', hfds='reach-vb/jenny_tts_dataset')
+@register(dsname='jenny_mimi', hfds='reach-vb/jenny_tts_dataset', split='train')
 def prepare_jenny(item):
     audio_format = '.wav'
     id = item['file_name'].replace('/', '_')
