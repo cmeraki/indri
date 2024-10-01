@@ -249,7 +249,7 @@ def train_text_semantic(dataset_dirs):
     model = GPT.from_pretrained(model_type=pretrained)
     model.expand_vocab(new_vocab_size=vocab_size)
 
-    logger.info(model)
+    # logger.info(model)
 
     logger.info(f"Vocab size: {vocab_size}")
     logger.info(f"Model outdir: {out_dir}")
