@@ -3,7 +3,14 @@ import random
 import numpy as np
 from pathlib import Path
 from contextlib import nullcontext
-from configs.constants import *
+
+MIMI = 'mimi'
+TEXT = 'text'
+AUDIO = 'audio'
+ANNOTATIONS = 'annotation'
+TOKENS = 'tokens'
+CONVERT = 'convert'
+CONTINUE = 'continue'
 
 seed = 1337
 torch.manual_seed(seed)
@@ -29,8 +36,7 @@ Path(CACHE_DIR).mkdir(exist_ok=True, parents=True)
 
 print('Cache directory at: ', CACHE_DIR)
 
-configs_dir = Path(__file__).parent 
-SPEAKER_FILE = configs_dir / 'allowed_speakers.jsonl'
+SPEAKER_FILE = 'allowed_speakers.jsonl'
 
 class Config:
     coarse_codebooks = 2

@@ -4,15 +4,13 @@ import random
 import numpy as np
 from pathlib import Path
 
-from datalib.tokenlib import get_tokenizer
-from omni.gpt2_trainer import train as gpt_train
-from omni.gpt2_model import GPT, get_model
-from omni.logger import get_logger
+from tokenlib import get_tokenizer
+from gpt2_trainer_with_ddp import train as gpt_train
+from gpt2_model import GPT, get_model
+from logger import get_logger
 
-from configs.commons import Config as cfg
-from configs.commons import DEVICE, CACHE_DIR, SPEAKER_FILE
-from configs.constants import *
-import configs.training_omni as training_cfg
+from commons import Config as cfg
+from commons import CACHE_DIR, SPEAKER_FILE, TEXT, MIMI, CONVERT
 
 logger = get_logger(__name__)
 logger.info(cfg.__dict__)
@@ -229,8 +227,8 @@ class TaskGenerator:
 
         return x, y, tasks
 
-def train_text_semantic(device, dataset_dirs):
-    out_dir = Path(f'{CACHE_DIR}/models/mimi_shrutilipi/')
+def train_text_semantic(dataset_dirs):
+    out_dir = Path(f'{CACHE_DIR}/models/mimi_gigaspeech/')
 
     data_generator = DataLoader(
         datasets_dirs=dataset_dirs
@@ -244,15 +242,12 @@ def train_text_semantic(device, dataset_dirs):
     #     print(batch)
         # print(data_generator.bad_reads, data_generator.total_reads)
 
-    pretrained = 'mdouglas/llmc-gpt2-774M-150B'
+    # pretrained = 'mdouglas/llmc-gpt2-774M-150B'
+    pretrained = 'cmeraki/gpt2-124M-400B'
     vocab_size = cfg.VOCAB_SIZE
 
     model = GPT.from_pretrained(model_type=pretrained)
     model.expand_vocab(new_vocab_size=vocab_size)
-    model.to(device)
-
-    
-    model = torch.compile(model)
 
     logger.info(model)
 
@@ -266,9 +261,8 @@ def train_text_semantic(device, dataset_dirs):
               steps=10000,
               block_size=1024,
               eval_interval=1000,
-              batch_size=4,
-              grad_accum_steps=2,
-              device=device)
+              batch_size=2,
+              grad_accum_steps=2)
 
 
 
@@ -276,8 +270,6 @@ if __name__ == '__main__':
     from argparse import ArgumentParser
     
     parser = ArgumentParser()
-    parser.add_argument('--device', type=str, default=DEVICE)
-    parser.add_argument('--type', type=str, required=True, help='one of textsem/semaco')
     
     args = parser.parse_args()
     
@@ -285,8 +277,7 @@ if __name__ == '__main__':
     
     speaking_datasets = []
     
-    if args.type == 'textsem':
-        datasets = reading_datasets
-        print("Datasets=", datasets)
-        dirs = [Path(f'{CACHE_DIR}/{dsname}/') for dsname in datasets]
-        train_text_semantic(args.device, dataset_dirs=dirs)
+    datasets = reading_datasets
+    print("Datasets=", datasets)
+    dirs = [Path(f'{CACHE_DIR}/{dsname}/') for dsname in datasets]
+    train_text_semantic(dataset_dirs=dirs)
