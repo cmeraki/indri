@@ -4,7 +4,7 @@ import os
 import numpy as np
 from transformers import MimiModel, AutoFeatureExtractor, AutoTokenizer
 
-from configs.constants import *
+from commons import *
 
 # torch.backends.cuda.matmul.allow_tf32 = True
 # torch.backends.cudnn.allow_tf32 = True

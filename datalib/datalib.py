@@ -1,7 +1,7 @@
 import json
 
 from dataclasses import dataclass, asdict
-from datalib.tokenlib import TEXT, MIMI, AUDIO, ANNOTATIONS, TOKENS
+from commons import TEXT, MIMI, AUDIO, ANNOTATIONS, TOKENS
 import tarfile
 import os
 from pathlib import Path
@@ -22,6 +22,7 @@ class Sample:
     duration: float = None
     mimi_tokens: str = None
     text_tokens: str = None
+    audio_path: str = None
 
     metadata: dict = None
 
@@ -36,21 +37,20 @@ class Sample:
 class Dataset:
     def __init__(self,
                  repo_id,
-                 base_path=Path.home() / '.cache/indri/', 
-                 audio_format='.wav',
+                 base_path=Path.home() / '.cache/indri/',
                  device='cuda:0'):
     
         self.base_path = base_path
         self.base_path.mkdir(exist_ok=True)
-
-        self.audio_format = audio_format
 
         self.repo_id = repo_id
         self.local_path = base_path / self.repo_id
         self.local_path.mkdir(exist_ok=True)
 
         self.dirs = { MIMI: self.local_path / TOKENS / MIMI,
-                    ANNOTATIONS: self.local_path / ANNOTATIONS}
+                    ANNOTATIONS: self.local_path / ANNOTATIONS,
+                    AUDIO: self.local_path / AUDIO, 
+                    }
 
         for dir in self.dirs.values():
             print("dir=", dir)
@@ -124,14 +124,16 @@ class Dataset:
                         path_in_repo=f'{name}.tar',
                         token=self.hf_token)
 
-            print("Deleting", tar_fname)
-            os.remove(tar_fname)
+            # print("Deleting", tar_fname)
+            # os.remove(tar_fname)
 
     @staticmethod
-    def create_sample(id, audio_format):
+    def create_sample(id):
         sample = Sample()
         sample.id = id
         sample.mimi_tokens = str(f'{TOKENS}/{MIMI}/{id}.npy')
+        sample.audio_path = str(f'{AUDIO}/{id}.wav')
+        
         return sample
 
     def get_absolute_path(self, path: str):
@@ -177,15 +179,6 @@ class Dataset:
     def close(self):
         if self.metadata_writer:
             self.metadata_writer.close()
-
-
-def create_tar(dir, tar_path):
-    tar_cmd = [
-        'tar',
-        '-cf',
-        tar_path,
-        dir]
-
 
 if __name__ == '__main__':
     import argparse

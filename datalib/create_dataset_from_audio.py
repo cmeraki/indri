@@ -9,6 +9,7 @@ import numpy as np
 import torch
 
 def get_transcript(audio_file):
+    print(f"whisper:{audio_file}")
     with torch.inference_mode():
         result = model.transcribe(audio_file, verbose=False, language="en")
     return result
@@ -35,8 +36,6 @@ def process(dsname, input_audio_dir, speaker_name):
     dataset = Dataset(repo_id=dsname)
     audio_files = list(glob.glob(input_audio_dir + '*.wav'))
     audio_files += list(glob.glob(input_audio_dir + '*.mp3'))
-    
-    audio_format = '.wav'
 
     print("num audio files", len(audio_files))
 
@@ -51,7 +50,7 @@ def process(dsname, input_audio_dir, speaker_name):
             segment = audio[start*1000:end*1000]
 
             id = f'{file_idx}_chunk_{chunk_idx}'
-            sample = Dataset.create_sample(id=id, audio_format=audio_format)
+            sample = Dataset.create_sample(id=id)
             
             sample.raw_text = elem['text']
             sample.speaker_id = speaker_name
@@ -77,7 +76,7 @@ if __name__ == '__main__':
 
     
     args = parser.parse_args()
-    model = whisper.load_model("medium", device=args.device)
+    model = whisper.load_model("turbo", device=args.device)
     model.eval()
     
     process(args.dsname, args.audio, args.speaker)

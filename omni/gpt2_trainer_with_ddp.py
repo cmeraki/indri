@@ -176,7 +176,7 @@ def train(model,
         local_iter_num += 1
 
     model_fname = f"{out_dir}/gpt_last.pt"
-    torch.save({"model": model.state_dict(), "config": model.config}, model_fname)
+    torch.save({"model": raw_model.state_dict(), "config": raw_model.config}, model_fname)
 
     if ddp:
         destroy_process_group()

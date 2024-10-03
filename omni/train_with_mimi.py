@@ -228,13 +228,13 @@ class TaskGenerator:
         return x, y, tasks
 
 def train_text_semantic(dataset_dirs):
-    out_dir = Path(f'{CACHE_DIR}/models/mimi_gigaspeech/')
+    # out_dir = Path(f'{CACHE_DIR}/models/mimi_gigaspeech/')
 
-    data_generator = DataLoader(
-        datasets_dirs=dataset_dirs
-    )
+    # data_generator = DataLoader(
+    #     datasets_dirs=dataset_dirs
+    # )
 
-    taskgen = TaskGenerator(loader=data_generator)
+    # taskgen = TaskGenerator(loader=data_generator)
 
     # from tqdm import tqdm
     # for i in tqdm(range(100000)):
@@ -242,27 +242,30 @@ def train_text_semantic(dataset_dirs):
     #     print(batch)
         # print(data_generator.bad_reads, data_generator.total_reads)
 
-    # pretrained = 'mdouglas/llmc-gpt2-774M-150B'
-    pretrained = 'cmeraki/gpt2-124M-400B'
+    pretrained = 'mdouglas/llmc-gpt2-774M-150B'
+    # pretrained = 'cmeraki/gpt2-124M-400B'
     vocab_size = cfg.VOCAB_SIZE
 
     model = GPT.from_pretrained(model_type=pretrained)
     model.expand_vocab(new_vocab_size=vocab_size)
 
+    state_dict = torch.load('/home/apurva/Downloads/gpt_46000.pt')
+    print(state_dict)
+    
     # logger.info(model)    
 
     logger.info(f"Vocab size: {vocab_size}")
     logger.info(f"Model outdir: {out_dir}")
     logger.info("Training text sem".upper())
 
-    gpt_train(model,
-              get_batch=taskgen.get_batch,
-              out_dir=out_dir,
-              steps=10000,
-              block_size=1024,
-              eval_interval=1000,
-              batch_size=2,
-              grad_accum_steps=2)
+    # gpt_train(model,
+    #           get_batch=taskgen.get_batch,
+    #           out_dir=out_dir,
+    #           steps=10000,
+    #           block_size=1024,
+    #           eval_interval=1000,
+    #           batch_size=2,
+    #           grad_accum_steps=2)
 
 
 
