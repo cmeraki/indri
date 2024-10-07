@@ -35,22 +35,22 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Create and upload a webdataset from huggingface dataset')
     parser.add_argument('--dsname', type=str, required=True, help='Name of your dataset. Needs to have a registered mapping function.')
-    parser.add_argument('--outname', type=str, required=True, help='String to append to the webdataset name')
-    parser.add_argument('--cache_dir', default='~/.cache/wds/transform/', type=str, required=False, help='Path to cache the webdataset shards while transforming')
+    parser.add_argument('--outprefix', type=str, required=True, help='Prefix for the webdataset shards')
+    parser.add_argument('--cache_dir', default='~/.cache/wds/prepare/', type=str, required=False, help='Path to cache the webdataset shards while transforming')
 
     args = parser.parse_args()
 
     hf_user = 'cmeraki'
-    hf_repo = 'tts_webdataset'
+    hf_repo = 'audiofolder_webdataset'
     hf_token = os.environ['CMERAKI_HF_TOKEN']
     cache_dir = Path(args.cache_dir).expanduser()
     Path(cache_dir).mkdir(parents=True, exist_ok=True)
 
-    # with wds.ShardWriter(f"{Path(cache_dir, args.outname)}__%06d.tar") as sink:
-    #     for sample in generate_wds_samples(args.dsname):
-    #         sink.write(sample)
+    with wds.ShardWriter(f"{Path(cache_dir, args.outprefix)}__%06d.tar") as sink:
+        for sample in generate_wds_samples(args.dsname):
+            sink.write(sample)
 
-    tar_files = glob(f"{cache_dir}/{args.outname}__*.tar")
+    tar_files = glob(f"{cache_dir}/{args.outprefix}__*.tar")
     print(f'Uploading {args.dsname} to huggingface with {len(tar_files)} shards')
 
     for tar_file in tqdm(tar_files, desc='Uploading shards'):
