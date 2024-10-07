@@ -51,9 +51,3 @@
 {"dataset": "expresso", "speaker": "ex04", "combined": "[spkr_expresso_ex04]"}
 {"dataset": "expresso", "speaker": "ex01", "combined": "[spkr_expresso_ex01]"}
 {"dataset": "jenny", "speaker": "jenny", "combined": "[spkr_jenny_jenny]"}
-{"dataset": "youtube_en_asmr", "speaker": "daily_bread_asmr", "combined": "[spkr_youtube_en_asmr_daily_bread_asmr]"}
-{"dataset": "youtube_en_gibiasmr", "speaker": "gibi_asmr", "combined": "[spkr_youtube_en_gibiasmr_gibi_asmr]"}
-{"dataset": "youtube_en_spongebob", "speaker": "spongebob", "combined": "[spkr_youtube_en_spongebob_spongebob]"}
-{"dataset": "audiobooks_attenborough", "speaker": "attenborough", "combined": "[spkr_audiobooks_attenborough_attenborough]"}
-{"dataset": "akshatsri_en_youtube", "speaker": "akshatsri", "combined": "[spkr_akshatsri_en_youtube_akshatsri]"}
-{"dataset": "history_of_india_en_youtube", "speaker": "kitpatrick", "combined": "[spkr_history_of_india_en_youtube_kitpatrick]"}

@@ -50,23 +50,26 @@ def find_audio_files(folder):
     return audio_files
 
 torch.inference_mode()
-def tokenize(audio_dir, token_dir):
+def tokenize(audio_dir, token_dir, device):
     model = MimiModel.from_pretrained("kyutai/mimi")
-    model.to('cuda:0')
+    model.to(device)
     model.eval()
     n_codebooks = 8
 
     audio_files = find_audio_files(audio_dir)
     token_dir = Path(token_dir)
     ads = AudioDataset(audio_files)
-    dataloader = DataLoader(ads, batch_size=8, num_workers=8, collate_fn=pad_batch, pin_memory=True)
+    dataloader = DataLoader(ads, batch_size=2, 
+                            num_workers=2, 
+                            collate_fn=pad_batch, 
+                            pin_memory=True)
 
     import math
 
     pbar = tqdm(total=len(audio_files), desc="tokenizing...")
     
     for audio_batch_padded, padding_mask, lengths, file_batch in dataloader:
-        audio_batch = audio_batch_padded.unsqueeze(1).to('cuda:0', non_blocking=True)
+        audio_batch = audio_batch_padded.unsqueeze(1).to(device, non_blocking=True)
         batched_out = model.encode(audio_batch, padding_mask, num_quantizers=n_codebooks)
         batched_out = batched_out.audio_codes.to(torch.int16).detach().cpu().numpy()
         codes = []
@@ -80,5 +83,14 @@ def tokenize(audio_dir, token_dir):
             np.save(out_file_path, code)
             
         pbar.update(len(lengths))
-        
-tokenize(audio_dir = '/home/.cache/huggingface/datasets/downloads/extracted/audios/', token_dir = '/home/.cache/indri/gigaspeech/tokens/mimi/')
+
+if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser(description='Add a hf dataset in 3 steps')
+    parser.add_argument('--inp', type=str, required=True, help='directory of audio files')
+    parser.add_argument('--out', type=str, required=False, default=None, help='name of speaker if known')
+    parser.add_argument('--device', type=str, required=True, help='name of device')
+    
+    args = parser.parse_args()
+
+    tokenize(audio_dir = args.inp, token_dir = args.out, device=args.device)

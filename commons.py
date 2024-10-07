@@ -39,19 +39,19 @@ print('Cache directory at: ', CACHE_DIR)
 SPEAKER_FILE = 'allowed_speakers.jsonl'
 
 class Config:
-    coarse_codebooks = 2
-    per_codebook_size = 1024
+    n_codebooks = 4
+    per_codebook_size = 2048
 
     VOCAB_SIZES = {
         TEXT: 50257,
-        MIMI: 2048*4,
+        MIMI: per_codebook_size * n_codebooks,
     }
-
+    
     OFFSET = {
         TEXT: 0,
         MIMI: VOCAB_SIZES[TEXT],
     }
-
+    
     TASK_TOKENS = {
         CONVERT: '[convert]',
         CONTINUE: '[continue]',

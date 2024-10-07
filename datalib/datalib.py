@@ -47,14 +47,16 @@ class Dataset:
         self.local_path = base_path / self.repo_id
         self.local_path.mkdir(exist_ok=True)
 
-        self.dirs = { MIMI: self.local_path / TOKENS / MIMI,
-                    ANNOTATIONS: self.local_path / ANNOTATIONS,
-                    AUDIO: self.local_path / AUDIO, 
-                    }
+        self.dirs = { 
+            MIMI: self.local_path / TOKENS / MIMI,
+            ANNOTATIONS: self.local_path / ANNOTATIONS,
+            AUDIO: self.local_path / AUDIO,
+        }
 
         for dir in self.dirs.values():
             print("dir=", dir)
-            Path(dir).mkdir(exist_ok=True, parents=True)
+            Path(dir).mkdir(exist_ok=True, 
+                            parents=True)
 
         self.metadata_path = self.local_path / ANNOTATIONS / 'metadata.jsonl'
         self.metadata_writer = None
@@ -67,7 +69,7 @@ class Dataset:
         self.device = device
         self.audio_tokenizer = MimiTokenizer(device=self.device)
 
-    def download(self, hf_repo_id=None, dirs=[MIMI, AUDIO, ANNOTATIONS]):
+    def download(self, hf_repo_id=None, dirs=[AUDIO, ANNOTATIONS]):
         if hf_repo_id is None:
             hf_repo_id = self.repo_id
 
@@ -150,7 +152,7 @@ class Dataset:
     
     def add_audio(self, sample: Sample):
         audio_tokens = self.audio_tokenizer.encode(sample.audio_array.astype(np.float32).reshape(-1))
-        audio_tokens_path = self.get_absolute_path(sample.mimi_tokens) 
+        audio_tokens_path = self.get_absolute_path(sample.mimi_tokens)
         np.save(audio_tokens_path, audio_tokens)
 
     def add_sample(self, sample: Sample):
@@ -187,6 +189,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     dataset = Dataset(repo_id=args.dataset)
-    dataset.download(audio=True)
-    for elem in dataset.iter_dataset():
-        print(elem)
+    dataset.upload()
+    # dataset.download()
+    # for elem in dataset.iter_dataset():
+    #     print(elem)
