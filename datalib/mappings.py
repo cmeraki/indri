@@ -1,195 +1,60 @@
+import os
 import json
+import wave
 import numpy as np
-from datalib.datalib import Dataset
-from tts.utils import audio_to_wav_bytestring
+import torchaudio
+import io
 
-dataset_info = {}
+def audio_to_wav_bytestring(file_path):
+    waveform, sample_rate = torchaudio.load(file_path)
+    buffer = io.BytesIO()
+    torchaudio.save(buffer,
+                   waveform,
+                   sample_rate=16000,format='mp3',
+                   encoding='PCM_S',
+                   bits_per_sample=16,
+                   backend='ffmpeg',
+                   compression=torchaudio.io.CodecConfig(bit_rate=64000))
+    wav_bytestring = buffer.getvalue()
+    
+    return wav_bytestring, sample_rate
 
-def register(dsname, hfds, split=None, name=None):
-    def decorator(func):
-        dataset_info[dsname] = {
-            'hfds'  : hfds,
-            'method': func,
-            'dsname': dsname,
-            'split': split,
-            'name': name,
-            'path': hfds
-        }
-        return func
-    return decorator
 
+def prepare_local_dataset(dsname, channel_name, audio_name, folder_path, split, language):
+    channel_path = os.path.join(folder_path,channel_name)
+    audio_path = os.path.join(channel_path,"audio_files_compressed",audio_name) + ".wav"
+    subtitle_path = os.path.join(channel_path,"subtitles",audio_name) + ".vtt"
+    file_name = os.path.basename(audio_path)
+    id = file_name.replace('.', '_')
 
-@register(dsname='jenny', hfds='reach-vb/jenny_tts_dataset', split='train')
-def prepare_jenny(item):
-    id = "jenny_" + item['file_name'].replace('/', '_')
+    if os.path.exists(subtitle_path):
+        with open(subtitle_path, 'rb') as f:
+            transcription = f.read().strip()
+    else:
+        print(f"Subtitle not found: {subtitle_path}")
+        transcription = None
+    
+    # Load the audio file using torchaudio
+    wav_bytes, sample_rate = audio_to_wav_bytestring(audio_path)
 
     # Prepare the JSON data
     json_data = {
         "id": id,
-        "raw_text": item['transcription_normalised'],
-        "speaker_id": "jenny",
-        "sampling_rate": item['audio']['sampling_rate'],
-        "dataset": "jenny_train",
+        "speaker_id": "Null",  # You might want to adjust this
+        "sampling_rate": sample_rate,
+        "dataset": "local_dataset_train",
         "metadata": {
-            "language": "en"
+            "language": language  # Adjust as needed
         }
     }
 
-    wav_data = audio_to_wav_bytestring(item['audio']['array'], item['audio']['sampling_rate'])
+    wav_data = audio_to_wav_bytestring(audio_path)
 
     sample = {
         "__key__": id,
         "json": json.dumps(json_data),
-        "wav": wav_data
+        "wav": audio_bytes,
+        "vtt": transcription
     }
 
     return sample
-
-
-@register(dsname='expresso', hfds='ylacombe/expresso', split='train')
-def prepare_expresso(item):
-    id = "expresso_" + item['id']
-    json_data = {
-        "id": id,
-        "raw_text": item['text'],
-        "speaker_id": item['speaker_id'],
-        "sampling_rate": item['audio']['sampling_rate'],
-        "dataset": "expresso_train",
-        "metadata": {
-            "language": "en"
-        }
-    }
-
-    wav_data = audio_to_wav_bytestring(item['audio']['array'], item['audio']['sampling_rate'])
-
-    sample = {
-        "__key__": id,
-        "json": json.dumps(json_data),
-        "wav": wav_data
-    }
-
-    return sample
-
-
-@register(dsname='hifi_tts', hfds='MikhailT/hifi-tts', split='clean')
-def prepare_hifi_tts(item):
-    id = "hifi_tts_" + item['file'].replace('/', '_')
-
-    json_data = {
-        "id": id,
-        "raw_text": item['text_no_preprocessing'],
-        "speaker_id": item['speaker'],
-        "sampling_rate": item['audio']['sampling_rate'],
-        "dataset": "hifi_tts_clean",
-        "metadata": {
-            "language": "en",
-            "duration": item['duration']
-        }
-    }
-
-    wav_data = audio_to_wav_bytestring(item['audio']['array'], item['audio']['sampling_rate'])
-
-    sample = {
-        "__key__": id,
-        "json": json.dumps(json_data),
-        "wav": wav_data
-    }
-    
-    return sample
-
-
-# @register(dsname='vctk', hfds='sanchit-gandhi/vctk')
-def prepare_vctk(item):
-    audio_format = '.wav'
-    id = item['text_id'] + '_' + item['speaker_id']
-    sample = Dataset.create_sample(id=id, audio_format=audio_format)
-    sample.raw_text = item['text']
-    sample.speaker_id = item['speaker_id']
-    sample.metadata = {k for k in item if k != 'audio'}
-
-    sample.audio_array = item['audio']['array']
-    sample.sampling_rate = item['audio']['sampling_rate']
-    return sample
-
-# @register(dsname='globe', hfds='MushanW/GLOBE')
-def prepare_globe(item):
-    audio_format = '.wav'
-    id = item['text_id'] + '_' + item['speaker_id']
-    sample = Dataset.create_sample(id=id, audio_format=audio_format)
-    sample.raw_text = item['transcript']
-    sample.speaker_id = item['speaker_id']
-    sample.metadata = {k for k in item if k != 'audio'}
-
-    sample.audio_array = item['audio']['array']
-    sample.sampling_rate = item['audio']['sampling_rate']
-    return sample
-
-@register(dsname='ljspeech', hfds='keithito/lj_speech', split='train')
-def prepare_ljspeech(item):
-    id = "ljspeech_" + item['id']
-
-    json_data = {
-        "id": id,
-        "raw_text": item['text'],
-        "speaker_id": "ljspeech",
-        "sampling_rate": item['audio']['sampling_rate'],
-        "dataset": "ljspeech_train",
-        "metadata": {
-            "language": "en"
-        }
-    }
-
-    wav_data = audio_to_wav_bytestring(item['audio']['array'], item['audio']['sampling_rate'])
-
-    sample = {
-        "__key__": id,
-        "json": json.dumps(json_data),
-        "wav": wav_data
-    }
-
-    return sample
-
-
-# @register(dsname='mls_eng_10k', hfds='parler-tts/mls_eng_10k')
-def prepare_mlseng(item):
-    audio_format = '.wav'
-    id=item['audio']['path']
-    
-    sample = Dataset.create_sample(id=id, audio_format=audio_format)
-    sample.raw_text = item['transcript']
-    sample.speaker_id = item['speaker_id']
-
-    sample.audio_array = item['audio']['array']
-    sample.sampling_rate = item['audio']['sampling_rate']
-    return sample
-
-# @register(dsname='gigaspeech', name='xl', split='train', hfds='speechcolab/gigaspeech')
-def prepare_gigaspeech(item):
-    audio_format = '.wav'
-    id=item['segment_id']
-    
-    sample = Dataset.create_sample(id=id, audio_format=audio_format)
-    sample.raw_text = item['text']
-    sample.speaker_id = None
-
-    sample.audio_array = item['audio']['array']
-    sample.sampling_rate = item['audio']['sampling_rate']
-    return sample
-
-# @register(dsname='emilia', split='en', hfds='amphion/Emilia-Dataset')
-def prepare_gigaspeech(item):
-    audio_format = '.wav'
-    id=item['json']['id']
-    
-    sample = Dataset.create_sample(id=id, audio_format=audio_format)
-    sample.raw_text = item['json']['text']
-    sample.speaker_id = item['json']['speaker']
-
-    sample.audio_array = item['mp3']['array']
-    sample.sampling_rate = item['mp3']['sampling_rate']
-    sample.duration = item['json']['duration']
-    sample.metadata = item['json']
-    return sample
-
-
-print(dataset_info)
