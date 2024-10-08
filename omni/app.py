@@ -2,7 +2,7 @@ from infer import Infer
 import gradio as gr
 import json
 
-model_infer = Infer(model_path='/home/meraki/Downloads/mimi_speaker_ids_249k.pt')
+model_infer = Infer(model_path='/home/meraki/Downloads/mimi_speaker_ids_283k.pt')
 
 SPEAKERS = [json.loads(d)['combined'] for d in open('allowed_speakers.jsonl')]
 

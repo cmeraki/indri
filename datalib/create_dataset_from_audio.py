@@ -10,7 +10,7 @@ import torch
 import os
 import torchaudio
 
-from silero_vad import load_silero_vad, read_audio, get_speech_timestamps
+from silero_vad import load_silero_vad, read_audio, get_speech_timestamps, save_audio
 silero = load_silero_vad()
 
 def convert_audio(wav: torch.Tensor, sr: int, target_sr: int, target_channels: int):
@@ -36,67 +36,53 @@ def find_audio_files(folder):
     return audio_files
 
 @torch.inference_mode()
-def make_transcript(audio_file_path):
-
-    wav = read_audio('path_to_audio_file')
+def get_transcript(audio_path):
+    wav = read_audio(audio_path)
     speech_timestamps = get_speech_timestamps(wav, silero)
-    print(speech_timestamps)
+    from tqdm import tqdm
+    text = ''
+    data = []
+    for timestamp in speech_timestamps:
+        subwav = wav[timestamp['start']:timestamp['end']]
+        transcript = whisper_model.transcribe(audio=subwav, initial_prompt=text, language='hi') 
+        text += transcript['text']
+        transcript['audio'] = subwav
+        yield transcript
     
-    transcript = {}
-    text_till_now = ""
-
-    for chunk in chunks:
-        result = whisper_model.transcribe(audio_file_path, 
-                                verbose=True, 
-                                word_timestamps=True, 
-                                initial_prompt=text_till_now)
-        
     
-
-
 def process(dsname, input_audio_dir, speaker_name):
     dataset = Dataset(repo_id=dsname)
     audio_files = find_audio_files(input_audio_dir)
 
     print("num audio files", len(audio_files))
-    print(audio_files[51])
-    audio_files = audio_files[51:52]
+    # print(audio_files[51])
+    # audio_files = audio_files[51:52]
 
     for file_idx, audio_file in tqdm(enumerate(audio_files), 'processing file ..'):
-        make_transcript(audio_file)
+        transcript = get_transcript(audio_file)
 
         # transcript_path = Path(audio_file).with_suffix('.json')
         # transcript_json = json.dumps(transcript, ensure_ascii=False)
 
         # with open(transcript_path, 'w') as transcript_writer: 
         #     transcript_writer.write(transcript_json)
-
-
-        # # sentences = make_sentences(transcript)
-        # sentences = transcript["chunks"]
-        # audio = AudioSegment.from_file(audio_file)
         
-        # for chunk_idx, elem in tqdm(enumerate(sentences), desc='processing chunks..'):
-        #     start = elem['timestamp'][0]
-        #     end = elem['timestamp'][1]
+        
+        for chunk_idx, elem in tqdm(enumerate(transcript), desc='processing chunks..'):
+            id = f'{file_idx}_chunk_{chunk_idx}'
+            sample = Dataset.create_sample(id=id)
             
-        #     segment = audio[start*1000:end*1000]
-
-        #     id = f'{file_idx}_chunk_{chunk_idx}'
-        #     sample = Dataset.create_sample(id=id)
+            sample.raw_text = elem['text']
+            sample.speaker_id = speaker_name
+            sample.audio_array = elem['audio'].numpy()
             
-        #     sample.raw_text = elem['text']
-        #     sample.speaker_id = speaker_name
-        #     sample.audio_array = np.asarray(segment.get_array_of_samples())
+            sample.sampling_rate = 16000
+            sample.duration = len(sample.audio_array)/sample.sampling_rate
             
-        #     sample.sampling_rate = audio.frame_rate
-        #     sample.duration = end - start
-        #     sample.metadata = elem
-            
-        #     audio_path = dataset.get_absolute_path(sample.audio_path)
-        #     segment.export(audio_path, format='wav')
-        #     # dataset.add_audio(sample)
-        #     dataset.add_metadata(sample)
+            audio_path = dataset.get_absolute_path(sample.audio_path)
+            save_audio(audio_path, elem['audio'], sampling_rate=16000)
+            # dataset.add_audio(sample)
+            dataset.add_metadata(sample)
             
 
 if __name__ == '__main__':
