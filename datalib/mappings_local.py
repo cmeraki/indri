@@ -10,7 +10,8 @@ def audio_to_wav_bytestring(file_path):
     buffer = io.BytesIO()
     torchaudio.save(buffer,
                    waveform,
-                   sample_rate=16000,format='mp3',
+                   sample_rate=sample_rate,
+                   format='wav',
                    encoding='PCM_S',
                    bits_per_sample=16,
                    backend='ffmpeg',
