@@ -26,7 +26,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     hf_user = 'cmeraki'
-    hf_repo = 'audiofolder_webdataset'
+    hf_repo = 'youtube_webdataset'
     hf_token = os.environ['CMERAKI_HF_TOKEN']
     cache_dir = Path(args.cache_dir).expanduser()
     Path(cache_dir).mkdir(parents=True, exist_ok=True)
@@ -40,7 +40,6 @@ if __name__ == '__main__':
     print(f'Uploading {args.dsname} to huggingface with {len(tar_files)} shards')
 
     # Uncomment the following block to enable uploading
-    '''
     for tar_file in tqdm(tar_files, desc='Uploading shards'):
         upload_file(
             repo_id=f'{hf_user}/{hf_repo}',
@@ -50,4 +49,3 @@ if __name__ == '__main__':
             token=hf_token
         )
     print(f'Uploaded {args.dsname} to huggingface')
-    '''
