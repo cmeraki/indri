@@ -54,10 +54,9 @@ def prepare_local_dataset(dsname, channel_name, audio_name, folder_path, split, 
         "__key__": id,
         "json": json.dumps(json_data),
         "wav": wav_bytes,
-        "vtt": transcription
     }
 
+    if transcription is not None:
+        sample["txt"] = transcription.decode("utf-8")
+
     return sample
-
-
-
