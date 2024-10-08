@@ -8,13 +8,14 @@ from encodec.utils import save_audio
 
 from logger import get_logger
 from infer import Infer
+from tqdm import tqdm
 
 DEVICE = 'cuda:0'
 
 logger = get_logger(__name__)
 llm_client = OpenAI()
 
-model_infer = Infer(model_path='/home/meraki/Downloads/mimi_speaker_ids_193k.pt')
+model_infer = Infer(model_path='/home/meraki/Downloads/mimi_speaker_ids_249k.pt')
 
 SYS_PROMPT = """
 Create a short conversation between a Narrator and a Listener on the topic provided by the user. The discussion should:
@@ -49,12 +50,12 @@ class Discussion(BaseModel):
 # Manual mapping of allowed speaker IDs in the app
 NARRATOR = {
     'Jenny': '[spkr_jenny_jenny]',
-    'Hifi': '[spkr_hifi_tts_9017]',
+    'Mark': '[spkr_hifi_tts_9017]',
 }
 
 LISTENER = {
     'Jenny': '[spkr_jenny_jenny]',
-    'Hifi': '[spkr_hifi_tts_9017]',
+    'Mark': '[spkr_hifi_tts_9017]',
 }
 
 def llm(topic):
@@ -66,6 +67,7 @@ def llm(topic):
         ],
         response_format=Discussion,
     )
+
     discussion: Discussion = completion.choices[0].message.parsed
 
     return discussion.dialogue
@@ -73,14 +75,10 @@ def llm(topic):
 
 def tts(text, speaker):
     wav = model_infer.infer(text, speaker)
-    wav = wav[0].detach()
-    print(wav.shape)
+    wav = wav[0][0].detach()
     wav = wav.cpu()
 
-    tmp_audio_file = f'omni.wav'
-    save_audio(wav, tmp_audio_file, sample_rate=24000)
-
-    return 24_000, wav[0].numpy()
+    return 24_000, wav.numpy()
 
 
 def generate_discussion(topic, narrator, listener):
@@ -90,7 +88,7 @@ def generate_discussion(topic, narrator, listener):
     discussion = llm(topic)
     discussion_audio = np.array([])
 
-    for dialogue in discussion:
+    for dialogue in tqdm(discussion):
         if dialogue.speaker == Speaker.NARRATOR:
             _, audio_out = tts(dialogue.text, narrator)
         else:
@@ -109,7 +107,7 @@ with gr.Blocks() as demo:
 
     with gr.Row():
         with gr.Column():
-            narrator = gr.Dropdown(list(NARRATOR.keys()), label="Select Storyteller", value='Attenborough')
+            narrator = gr.Dropdown(list(NARRATOR.keys()), label="Select Storyteller", value='Mark')
             listener = gr.Dropdown(list(LISTENER.keys()), label="Select Listener", value='Jenny')
             topic = gr.Textbox(label="Topic")
 

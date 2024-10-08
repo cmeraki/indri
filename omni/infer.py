@@ -68,47 +68,67 @@ class Infer:
         text = text.replace("\n", " ")
         return text
 
-
+    @torch.inference_mode()
     def infer(self, text, speaker='[spkr_jenny_jenny]'):
-        text = self.normalize_text(text=text)
-        txt_toks = self.text_tokenizer.encode(text)
-        speaker_id = self.text_tokenizer.encode(speaker)
+        sentences = text.split('\n')
+        full_semantic_tokens = []
+        
+        print(sentences)
 
-        input_tokens = np.hstack([
-            self.text_modality_token,
-            txt_toks,
-            self.convert_token,
-            self.acoustic_modality_token,
-            speaker_id,
-        ])
-        input_tokens = (torch.tensor(input_tokens, dtype=torch.long, device=DEVICE)[None, ...])
-        print(f'Text tokens: {input_tokens.shape}')
-        self.text_tokenizer
-    
-        with CTX:
-            self.omni_model.generation_config.eos_token_id = self.stop_token
-            semantic_tokens = self.omni_model.generate(
-                input_tokens,
-                max_length=1024,
-                temperature=0.5,
-                top_k=100,
-                do_sample=True,
-                logits_processor=[AlternatingCodebooksLogitsProcessor(input_start_len=len(input_tokens[0]),
-                                                                    codebook_size=2048,
-                                                                    num_codebooks=4,
-                                                                    offset=cfg.OFFSET[MIMI],
-                                                                    stop_token=self.stop_token)]
-            )
-            semantic_tokens = semantic_tokens.detach().cpu().numpy()
+        for text in sentences:
+            text = self.normalize_text(text=text)
+            txt_toks = self.text_tokenizer.encode(text)
+            speaker_id = self.text_tokenizer.encode(speaker)
 
+            input_tokens = np.hstack([
+                self.text_modality_token,
+                txt_toks,
+                self.convert_token,
+                self.acoustic_modality_token,
+                speaker_id,
+            ])
+            input_tokens = (torch.tensor(input_tokens, dtype=torch.long, device=DEVICE)[None, ...])
+            
+            with CTX:
+                self.omni_model.generation_config.eos_token_id = self.stop_token
+                semantic_tokens = self.omni_model.generate(
+                    input_tokens,
+                    max_length=1024,
+                    temperature=0.4,
+                    top_k=100,
+                    do_sample=True,
+                    logits_processor=[AlternatingCodebooksLogitsProcessor(input_start_len=len(input_tokens[0]),
+                                                                        codebook_size=2048,
+                                                                        num_codebooks=4,
+                                                                        offset=cfg.OFFSET[MIMI],
+                                                                        stop_token=self.stop_token)]
+                )
+                semantic_tokens = semantic_tokens.detach().cpu().numpy()
+                
+            sem_tokens = semantic_tokens[0][len(input_tokens[0]):]
+            last = np.where(sem_tokens==self.stop_token)[0][0]
+            sem_tokens = sem_tokens[:last] - cfg.OFFSET[MIMI]
+            full_semantic_tokens.append(sem_tokens)
 
-        sem_tokens = semantic_tokens[0][len(input_tokens[0]):]
-        decoded = self.text_tokenizer.decode(sem_tokens)
-        print("pred tokens", decoded, sem_tokens.shape)
-
-        last = np.where(sem_tokens==self.stop_token)[0][0]
-        audio_tokens = sem_tokens[:last] - cfg.OFFSET[MIMI]
-        mimi_tokens = self.deserialize_tokens(audio_tokens)
+        full_semantic_tokens = np.hstack(full_semantic_tokens)
+        mimi_tokens = self.deserialize_tokens(full_semantic_tokens)
 
         out = self.model.decode(torch.tensor(np.expand_dims(mimi_tokens, axis=0)))
         return out.audio_values
+    
+if __name__ == '__main__':
+    from argparse import ArgumentParser
+    
+    parser = ArgumentParser()    
+    args = parser.parse_args()
+
+    model = Infer('/home/meraki/Downloads/mimi_speaker_ids_249k.pt')
+    audio = model.infer("""Democracy is one of the most revered and widely embraced systems of governance.
+celebrated for its commitment to the ideals of freedom, equality, and participation.
+At its core, democracy ensures that the power to govern resides with the people.
+offering them the opportunity to shape the policies and leadership of their society. 
+While its forms and structures may vary across nations, the virtues of democracy transcend these differences.
+upholding values that promote human dignity, social progress, and collective well-being.""")
+
+
+
