@@ -53,7 +53,7 @@ def prepare_local_dataset(dsname, channel_name, audio_name, folder_path, split, 
     sample = {
         "__key__": id,
         "json": json.dumps(json_data),
-        "wav": audio_bytes,
+        "wav": wav_bytes,
         "vtt": transcription
     }
 
