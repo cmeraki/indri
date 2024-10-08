@@ -10,3 +10,6 @@ audiotoken
 datasets
 openai
 pydantic
+vocos
+webdataset
+vllm
