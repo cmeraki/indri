@@ -4,41 +4,36 @@ from pathlib import Path
 import webdataset as wds
 from datasets import load_dataset
 from huggingface_hub import upload_file
+import os
+import io
+import argparse
+from datalib.mappings import prepare_local_dataset
 
-from datalib.mappings import dataset_info
-
-def iter_hf_item(dsname, streaming=False):
-    dinfo = dataset_info[dsname]
-    dconfig = {k: dinfo[k] for k in ['path', 'split', 'name']}
-
-    dataset = load_dataset(
-        streaming=streaming,
-        **dconfig
-    )
-
-    dataset = iter(dataset)
-
-    for idx, item in tqdm(enumerate(dataset)):
-        yield item
-
-
-def generate_wds_samples(dsname):
-    for item in iter_hf_item(dsname):
-        transform_func = dataset_info[dsname]['method']
-        sample = transform_func(item)
-
+def generate_wds_samples(dsname, folder_path, channel_name, language):
+    channel_path = os.path.join(folder_path, channel_name)
+    audio_path = os.path.join(channel_path, "audio_files_compressed/")
+    
+    for file in os.listdir(audio_path):
+        filename = os.path.basename(file).replace(".wav", "")
+        sample = prepare_local_dataset(dsname=dsname, channel_name=channel_name, audio_name=filename, folder_path=folder_path, split='train', language=language)
         yield sample
 
-if __name__ == '__main__':
-    import os
-    import argparse
+def process_all_samples(dsname, folder_path, channel_name, language):
+    sample_generator = generate_wds_samples(dsname, folder_path, channel_name, language)
+    samples = list(sample_generator)  # This ensures all files are processed
+    return samples
 
+if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Create and upload a webdataset from huggingface dataset')
     parser.add_argument('--dsname', type=str, required=True, help='Name of your dataset. Needs to have a registered mapping function.')
+    parser.add_argument('--channel_name', type=str, required=True, help='Enter the channel name')
+    parser.add_argument("--folder_path", type=str, required=True, help="Enter the base path where you want to find the data")
+    parser.add_argument('--language', type=str, required=True, help='Enter the language')
     parser.add_argument('--outprefix', type=str, required=True, help='Prefix for the webdataset shards')
     parser.add_argument('--cache_dir', default='~/.cache/wds/prepare/', type=str, required=False, help='Path to cache the webdataset shards while transforming')
-
     args = parser.parse_args()
+
+    samples = process_all_samples(args.dsname, args.folder_path, args.channel_name, args.language)
 
     hf_user = 'cmeraki'
     hf_repo = 'audiofolder_webdataset'
@@ -47,12 +42,14 @@ if __name__ == '__main__':
     Path(cache_dir).mkdir(parents=True, exist_ok=True)
 
     with wds.ShardWriter(f"{Path(cache_dir, args.outprefix)}__%06d.tar") as sink:
-        for sample in generate_wds_samples(args.dsname):
+        for sample in samples:
             sink.write(sample)
 
     tar_files = glob(f"{cache_dir}/{args.outprefix}__*.tar")
     print(f'Uploading {args.dsname} to huggingface with {len(tar_files)} shards')
 
+    # Uncomment the following block to enable uploading
+    '''
     for tar_file in tqdm(tar_files, desc='Uploading shards'):
         upload_file(
             repo_id=f'{hf_user}/{hf_repo}',
@@ -61,6 +58,5 @@ if __name__ == '__main__':
             path_in_repo=tar_file.replace(str(cache_dir), ''),
             token=hf_token
         )
-
     print(f'Uploaded {args.dsname} to huggingface')
-
+    '''
