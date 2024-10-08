@@ -13,3 +13,5 @@ pydantic
 vocos
 webdataset
 vllm
+fastapi
+pydantic
