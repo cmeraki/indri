@@ -29,7 +29,8 @@ def prepare_local_dataset(dsname, channel_name, audio_name, folder_path, split, 
 
     if os.path.exists(subtitle_path):
         with open(subtitle_path, 'rb') as f:
-            transcription = f.read().strip()
+            subtitle_buffer = io.BytesIO(f.read())
+        transcription = subtitle_buffer.getvalue().strip()
     else:
         print(f"Subtitle not found: {subtitle_path}")
         transcription = None
@@ -57,6 +58,7 @@ def prepare_local_dataset(dsname, channel_name, audio_name, folder_path, split, 
     }
 
     if transcription is not None:
-        sample["txt"] = transcription.decode("utf-8")
+        sample["vtt"] = transcription.decode("utf-8")
 
     return sample
+
