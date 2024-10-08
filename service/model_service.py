@@ -1,6 +1,7 @@
 import numpy as np
 from typing import List
 from pydantic import BaseModel
+from pathlib import Path
 from fastapi import FastAPI, HTTPException
 
 from omni.logger import get_logger
@@ -42,7 +43,7 @@ def text_to_speech(requests: TTSRequest):
 
     for i in range(0, len(texts), batch_size):
         batch = texts[i:i+batch_size]
-        
+        results.append(model.generate_batch(batch))
 
     results = [item for sublist in results for item in sublist]
     return results
