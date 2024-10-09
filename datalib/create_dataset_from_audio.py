@@ -25,75 +25,70 @@ def find_audio_files(folder):
             if file.lower().endswith(audio_extensions):
                 audio_files.append(os.path.join(root, file))
 
+    audio_files = audio_files
     return audio_files
 
 
 class Transcriber:
     def __init__(self, device):
         self.silero = load_silero_vad()
-
-        model_id = "openai/whisper-large-v3-turbo"
-
-        model = AutoModelForSpeechSeq2Seq.from_pretrained(
-            model_id, low_cpu_mem_usage=True, use_safetensors=True
-        )
-        model.to(device)
-
-        processor = AutoProcessor.from_pretrained(model_id)
-
-        self.pipe = pipeline(
-            "automatic-speech-recognition",
-            model=model,
-            tokenizer=processor.tokenizer,
-            feature_extractor=processor.feature_extractor,
-            device=device,
-        )
-
-    def detect_language(self, audio):
-        mel = self.whisper_model.log_mel_spectrogram(audio).to(self.whisper_model.device)
-        _, probs = self.whisper_model.detect_language(mel)
-        print(_, probs)
-        return probs
+        self.model = whisper.load_model("turbo", device=device)
+        self.model.eval()
 
     @torch.inference_mode()
-    def get_transcript(self, audio_path, verbose=True, batch_size=4):
-        langprobs = self.detect_language(audio_path)
-        print("Language probs", langprobs)
+    def get_transcript(self, audio_path, tmp_dir='/tmp/transcribe/', verbose=True, batch_size=4):
+        
+        Path(tmp_dir).mkdir(exist_ok=True)
+        
+        # langprobs = self.detect_language(audio_path)
+        # print("Language probs", langprobs)
 
         wav = read_audio(audio_path)
-        speech_timestamps = get_speech_timestamps(wav, self.silero)
+        speech_timestamps = get_speech_timestamps(wav, self.silero, threshold=0.4, min_silence_duration_ms=250, max_speech_duration_s=15)
         
-        prev_text = ''
-        audio_batch = []
+        # take a large chunk and determine language
+        start_of_speech = speech_timestamps[0]['start']
+        chunk = wav[start_of_speech:start_of_speech + 16000*30].numpy()
+        res = self.model.transcribe(chunk)
+        prompt = res['text']
+        language = res['language']
+        
+        print("DETECTED LANGUAGE", res['language'])
+        print("PROMPT", prompt)
+        print("NUM CHUNKS", len(speech_timestamps))
 
-        for timestamp in speech_timestamps:
+
+        if language not in {'hi', 'en'}:
+            language = 'hi'
+
+        updated_prompt = prompt
+        for idx, timestamp in enumerate(speech_timestamps):
             subwav = wav[timestamp['start']:timestamp['end']]
-            audio_batch.append(subwav)
-            if len(audio_batch) >= batch_size:
-                transcript = self.pipe(audio=audio_batch,
-                                       batch_size=batch_size)
-                print(transcript)
-
-                if verbose:
-                    print(timestamp, transcript['text'])
                 
-                text = transcript['text']
+            transcript = self.model.transcribe(subwav,
+                                                initial_prompt=updated_prompt)
+            
+            updated_prompt = prompt + transcript['text']
+    
+            if verbose:
+                print(timestamp, transcript['text'])
+                
             transcript['audio'] = subwav
             yield transcript
 
     
-def process(dsname, input_audio_dir, speaker_name):
+def process(dsname, input_audio_dir, speaker_name, device):
     dataset = Dataset(repo_id=dsname)
     audio_files = find_audio_files(input_audio_dir)
 
     print("num audio files", len(audio_files))
-    transcriber = Transcriber()
+    transcriber = Transcriber(device=device)
 
     for file_idx, audio_file in tqdm(enumerate(audio_files), 'processing file ..'):
-        print("WORKING ON", audio_path)
         try:
-            transcript = transcriber.get_transcript(audio_file)
-            for chunk_idx, elem in tqdm(enumerate(transcript), desc='processing chunks..'):
+            print("WORKING ON", audio_file)
+            transcript = transcriber.get_transcript(audio_file, verbose=True)
+            for chunk_idx, elem in enumerate(transcript):
                 id = f'{file_idx}_chunk_{chunk_idx}'
                 sample = Dataset.create_sample(id=id)
                 
@@ -108,10 +103,10 @@ def process(dsname, input_audio_dir, speaker_name):
                 save_audio(audio_path, elem['audio'], sampling_rate=16000)
                 # dataset.add_audio(sample)
                 dataset.add_metadata(sample)
-        
-        except:
-            print("FAILED", audio_path)        
 
+        except:
+            print("FAILED", audio_file)    
+            
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(description='Add a hf dataset in 3 steps')
@@ -125,4 +120,4 @@ if __name__ == '__main__':
 
 
     
-    process(args.dsname, args.audio, args.speaker)
+    process(args.dsname, args.audio, args.speaker, args.device)
