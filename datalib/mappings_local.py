@@ -11,22 +11,17 @@ def audio_to_wav_bytestring(file_path):
     torchaudio.save(buffer,
                    waveform,
                    sample_rate=sample_rate,
-                   format='wav',
-                   encoding='PCM_S',
-                   bits_per_sample=16,
-                   backend='ffmpeg',
-                   compression=torchaudio.io.CodecConfig(bit_rate=64000))
+                   format='wav')
     wav_bytestring = buffer.getvalue()
     
     return wav_bytestring, sample_rate
 
-
-def prepare_local_dataset(dsname, channel_name, audio_name, folder_path, split, language):
+def prepare_local_dataset(folder_path, channel_name, audio_name, split, language):
     channel_path = os.path.join(folder_path,channel_name)
     audio_path = os.path.join(channel_path,"audio_files_compressed",audio_name) + ".wav"
     subtitle_path = os.path.join(channel_path,"subtitles",audio_name) + ".vtt"
     file_name = os.path.basename(audio_path)
-    id = file_name.replace('.', '_')
+    id = file_name.replace('.wav', '')
 
     if os.path.exists(subtitle_path):
         with open(subtitle_path, 'rb') as f:
@@ -42,15 +37,13 @@ def prepare_local_dataset(dsname, channel_name, audio_name, folder_path, split, 
     # Prepare the JSON data
     json_data = {
         "id": id,
-        "speaker_id": "Null",  # You might want to adjust this
+        "speaker_id": None,  # You might want to adjust this
         "sampling_rate": sample_rate,
-        "dataset": "local_dataset_train",
+        "dataset": channel_name,
         "metadata": {
             "language": language  # Adjust as needed
         }
     }
-
-    wav_data = audio_to_wav_bytestring(audio_path)
 
     sample = {
         "__key__": id,
@@ -62,4 +55,3 @@ def prepare_local_dataset(dsname, channel_name, audio_name, folder_path, split, 
         sample["vtt"] = transcription.decode("utf-8")
 
     return sample
-
