@@ -27,7 +27,7 @@ if __name__ == '__main__':
 
     hf_user = 'cmeraki'
     hf_repo = 'youtube_webdataset'
-    hf_token = "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"
+    hf_token = os.environ("CMERAKI_HF_TOKEN")
     cache_dir = Path(args.cache_dir).expanduser()
     Path(cache_dir).mkdir(parents=True, exist_ok=True)
 
