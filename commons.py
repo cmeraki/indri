@@ -3,7 +3,14 @@ import random
 import numpy as np
 from pathlib import Path
 from contextlib import nullcontext
-from configs.constants import *
+
+MIMI = 'mimi'
+TEXT = 'text'
+AUDIO = 'audio'
+ANNOTATIONS = 'annotation'
+TOKENS = 'tokens'
+CONVERT = 'convert'
+CONTINUE = 'continue'
 
 seed = 1337
 torch.manual_seed(seed)
@@ -32,21 +39,19 @@ print('Cache directory at: ', CACHE_DIR)
 SPEAKER_FILE = 'allowed_speakers.jsonl'
 
 class Config:
-    coarse_codebooks = 2
-    per_codebook_size = 1024
+    n_codebooks = 4
+    per_codebook_size = 2048
 
     VOCAB_SIZES = {
         TEXT: 50257,
-        SEMANTIC: 1000,
-        ACOUSTIC: 2048,
+        MIMI: per_codebook_size * n_codebooks,
     }
-
+    
     OFFSET = {
         TEXT: 0,
-        SEMANTIC: VOCAB_SIZES[TEXT],
-        ACOUSTIC: VOCAB_SIZES[TEXT] + VOCAB_SIZES[SEMANTIC],
+        MIMI: VOCAB_SIZES[TEXT],
     }
-
+    
     TASK_TOKENS = {
         CONVERT: '[convert]',
         CONTINUE: '[continue]',
@@ -54,8 +59,7 @@ class Config:
 
     MODALITY_TOKENS = {
         TEXT: '[text]',
-        SEMANTIC: '[semantic]',
-        ACOUSTIC: '[acoustic]',
+        MIMI: '[mimi]',
     }
 
     UNKNOWN_SPEAKER_ID = '[spkr_unk]'

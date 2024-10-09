@@ -3,24 +3,28 @@ import os
 from tqdm import tqdm
 from pathlib import Path
 from multiprocessing import Pool
-
+import torchaudio
+from torio.io import CodecConfig
 
 def reduce_audio_bitrate(f):
-    target_bitrate = '64k'
-    input_file, output_file = f
-    ffmpeg_cmd = [
-        'ffmpeg',
-        '-y',
-        '-v', '0',
-        '-i', input_file,
-        '-ac', '1',
-        '-acodec', 'libmp3lame',
-        '-b:a', target_bitrate,
-        output_file
-    ]
-
-    subprocess.run(ffmpeg_cmd, check=True)
-
+    try:
+        input_file, output_file = f
+        audio_array, sr = torchaudio.load(input_file)
+        audio_array = audio_array.to('cuda:0')
+        audio_array = torchaudio.functional.resample(audio_array, orig_freq=sr, new_freq=24000)
+        audio_array = audio_array.cpu()
+        torchaudio.save(
+            output_file,
+            audio_array,
+            sample_rate=24000,
+            format='mp3',
+            encoding='PCM_S',
+            bits_per_sample=16,
+            backend='ffmpeg',
+            compression=CodecConfig(bit_rate=64000)
+        )
+    except:
+        pass
 
 def find_audio_files(folder):
     audio_extensions = ('.mp3', '.flac', '.wav', '.ogg')
@@ -50,7 +54,7 @@ def compress_dir(input_dir, output_dir):
 
     file_list = list(zip(files, output_filepaths))
 
-    with Pool(processes=8) as pool:
+    with Pool(processes=32) as pool:
         list(tqdm(pool.imap(reduce_audio_bitrate, file_list), total=len(file_list), desc="Processing files"))
 
 

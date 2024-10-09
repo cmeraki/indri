@@ -1,17 +1,17 @@
 import json
 
 from dataclasses import dataclass, asdict
-from datalib.tokenlib import TEXT, SEMANTIC, ACOUSTIC, AUDIO, ANNOTATIONS, TOKENS
+from commons import TEXT, MIMI, AUDIO, ANNOTATIONS, TOKENS
 import tarfile
 import os
 from pathlib import Path
 from huggingface_hub import hf_hub_download
 from huggingface_hub import upload_file, create_repo
 
-import torchaudio
-from tts.utils import convert_audio
-from torio.io import CodecConfig
+from omni.utils import convert_audio
 import torch
+from datalib.tokenlib import MimiTokenizer
+import numpy as np
 
 
 @dataclass
@@ -20,11 +20,9 @@ class Sample:
     raw_text: str = None
     speaker_id: str = None
     duration: float = None
-
-    audio_path: str = None
-    semantic_tokens: str = None
-    acoustic_tokens: str = None
+    mimi_tokens: str = None
     text_tokens: str = None
+    audio_path: str = None
 
     metadata: dict = None
 
@@ -33,35 +31,32 @@ class Sample:
         return self
 
     def to_json(self):
-        return json.dumps(asdict(self))
+        return json.dumps(asdict(self), ensure_ascii=False)
 
 
 class Dataset:
     def __init__(self,
                  repo_id,
-                 base_path=Path.home() / '.cache/indri/', 
-                 audio_format='.wav'):
+                 base_path=Path.home() / '.cache/indri/',
+                 device='cuda:0'):
     
         self.base_path = base_path
         self.base_path.mkdir(exist_ok=True)
-
-        self.audio_format = audio_format
 
         self.repo_id = repo_id
         self.local_path = base_path / self.repo_id
         self.local_path.mkdir(exist_ok=True)
 
-        self.dirs = {
-                        ACOUSTIC: self.local_path / TOKENS / ACOUSTIC,
-                        SEMANTIC: self.local_path / TOKENS / SEMANTIC,
-                        TEXT: self.local_path / TOKENS / TEXT,
-                        AUDIO: self.local_path / AUDIO,
-                        ANNOTATIONS: self.local_path / ANNOTATIONS
-                    }
+        self.dirs = { 
+            MIMI: self.local_path / TOKENS / MIMI,
+            ANNOTATIONS: self.local_path / ANNOTATIONS,
+            AUDIO: self.local_path / AUDIO,
+        }
 
         for dir in self.dirs.values():
             print("dir=", dir)
-            Path(dir).mkdir(exist_ok=True, parents=True)
+            Path(dir).mkdir(exist_ok=True, 
+                            parents=True)
 
         self.metadata_path = self.local_path / ANNOTATIONS / 'metadata.jsonl'
         self.metadata_writer = None
@@ -71,7 +66,10 @@ class Dataset:
         
         self.ids = None
 
-    def download(self, hf_repo_id=None, dirs=[ACOUSTIC, SEMANTIC, AUDIO, ANNOTATIONS]):
+        self.device = device
+        self.audio_tokenizer = MimiTokenizer(device=self.device)
+
+    def download(self, hf_repo_id=None, dirs=[AUDIO, ANNOTATIONS]):
         if hf_repo_id is None:
             hf_repo_id = self.repo_id
 
@@ -128,17 +126,16 @@ class Dataset:
                         path_in_repo=f'{name}.tar',
                         token=self.hf_token)
 
-            print("Deleting", tar_fname)
-            os.remove(tar_fname)
+            # print("Deleting", tar_fname)
+            # os.remove(tar_fname)
 
     @staticmethod
-    def create_sample(id, audio_format):
+    def create_sample(id):
         sample = Sample()
         sample.id = id
-        sample.audio_path = str(f'{AUDIO}/{id}{audio_format}')
-        sample.semantic_tokens = str(f'{TOKENS}/{SEMANTIC}/{id}.npy')
-        sample.acoustic_tokens = str(f'{TOKENS}/{ACOUSTIC}/{id}.npy')
-        sample.text_tokens = str(f'{TOKENS}/{TEXT}/{id}.npy')
+        sample.mimi_tokens = str(f'{TOKENS}/{MIMI}/{id}.npy')
+        sample.audio_path = str(f'{AUDIO}/{id}.wav')
+        
         return sample
 
     def get_absolute_path(self, path: str):
@@ -154,26 +151,9 @@ class Dataset:
         self.metadata_writer.flush()
     
     def add_audio(self, sample: Sample):
-        audio_array = torch.tensor(sample.audio_array, dtype=torch.float32)
-        audio_array = audio_array.unsqueeze(dim=0)
-
-        audio_array = convert_audio(
-            audio_array,
-            sr=sample.sampling_rate,
-            target_sr=16000,
-            target_channels=1
-        )
-
-        torchaudio.save(
-            self.get_absolute_path(sample.audio_path),
-            audio_array,
-            sample_rate=16000,
-            format='mp3',
-            encoding='PCM_S',
-            bits_per_sample=16,
-            backend='ffmpeg',
-            compression=CodecConfig(bit_rate=64000)
-        )
+        audio_tokens = self.audio_tokenizer.encode(sample.audio_array.astype(np.float32).reshape(-1))
+        audio_tokens_path = self.get_absolute_path(sample.mimi_tokens)
+        np.save(audio_tokens_path, audio_tokens)
 
     def add_sample(self, sample: Sample):
         self.add_audio(sample)
@@ -202,57 +182,6 @@ class Dataset:
         if self.metadata_writer:
             self.metadata_writer.close()
 
-
-    def tokenize(self):
-        import audiotoken
-        from glob import glob
-        import numpy as np
-        from tqdm import tqdm
-        from datalib.tokenlib import (AUDIO,
-                                    SEMANTIC,
-                                    ACOUSTIC,
-                                    TEXT,
-                                    get_tokenizer)
-        
-        dataset = Dataset(repo_id=self.repo_id)
-        path = str(dataset.dirs[AUDIO] / f"*{self.audio_format}")
-        print(path)
-        files = glob(path)
-
-        print("nfiles", len(files))
-        print("from", dataset.dirs[AUDIO], "to", dataset.dirs[SEMANTIC])
-
-        tokenizer = audiotoken.AudioToken(tokenizer=audiotoken.Tokenizers.semantic_s, device='cuda:0')
-        tokenizer.encode_batch_files(audio_files=files,
-                                    outdir=dataset.dirs[SEMANTIC],
-                                    num_workers=4,
-                                    chunk_size=15,
-                                    batch_size=32)
-
-        tokenizer = audiotoken.AudioToken(tokenizer=audiotoken.Tokenizers.acoustic, device='cuda:0', num_codebooks=2)
-        tokenizer.encode_batch_files(audio_files=files,
-                                    outdir=dataset.dirs[ACOUSTIC],
-                                    chunk_size=15,
-                                    num_workers=4,
-                                    batch_size=32)
-
-
-        tokenizer = get_tokenizer(TEXT, device='cpu')
-        for item in tqdm(dataset.iter_dataset(), desc='iterating...'):
-            tokens = tokenizer.encode(item.raw_text)
-            token_path = dataset.get_absolute_path(item.text_tokens)
-            np.save(token_path, tokens)
-
-
-
-def create_tar(dir, tar_path):
-    tar_cmd = [
-        'tar',
-        '-cf',
-        tar_path,
-        dir]
-
-
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(description='prepares the data for consumption')
@@ -260,6 +189,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     dataset = Dataset(repo_id=args.dataset)
-    dataset.download(audio=True)
-    for elem in dataset.iter_dataset():
-        print(elem)
+    dataset.upload()
+    # dataset.download()
+    # for elem in dataset.iter_dataset():
+    #     print(elem)

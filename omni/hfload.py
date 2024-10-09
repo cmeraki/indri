@@ -1,5 +1,6 @@
 import torch
 from transformers import GPT2LMHeadModel, GPT2Config
+import gpt2_model
 
 def convert_to_hf(path, device: str = 'cpu'):
     custom_gpt = torch.load(path, map_location=device)['model']

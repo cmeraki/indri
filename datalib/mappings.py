@@ -15,7 +15,7 @@ def register(dsname, hfds, split=None, name=None):
     return decorator
 
 
-@register(dsname='jenny', hfds='reach-vb/jenny_tts_dataset')
+@register(dsname='jenny_mimi', hfds='reach-vb/jenny_tts_dataset', split='train')
 def prepare_jenny(item):
     audio_format = '.wav'
     id = item['file_name'].replace('/', '_')
@@ -98,7 +98,7 @@ def prepare_ljspeech(item):
     return sample
 
 
-@register(dsname='mls_eng_10k', hfds='parler-tts/mls_eng_10k')
+@register(dsname='mls_eng_10k', hfds='parler-tts/mls_eng_10k', split='train')
 def prepare_mlseng(item):
     audio_format = '.wav'
     id=item['audio']['path']
@@ -124,24 +124,8 @@ def prepare_gigaspeech(item):
     sample.sampling_rate = item['audio']['sampling_rate']
     return sample
 
-# {'__key__': 'EN_B00000_S00000_W000000', 
-#  '__url__': 'hf://datasets/amphion/Emilia-Dataset@bcaad00d13e7c101485990a46e88f5884ffed3fc/EN/EN-B000000.tar', 
-#  'json': {'dnsmos': 3.2927, 
-#           'duration': 6.264, 
-#           'id': 'EN_B00000_S00000_W000000', 
-#           'language': 'en', 
-#           'speaker': 'EN_B00000_S00000', 
-#           'text': " You can help my mother and you- No. You didn't leave a bad situation back home to get caught up in another one here. What happened to you, Los Angeles?",
-#           'wav': 'EN_B00000/EN_B00000_S00000/mp3/EN_B00000_S00000_W000000.mp3'
-#           },
-          
-# 'mp3': {'path': 'EN_B00000_S00000_W000000.mp3',
-#         'array': array([-0.00156609, -0.00178264, -0.00098045, ..., -0.00193841, -0.00217433, -0.00080763]),
-#         'sampling_rate': 24000}
-# }
-
 @register(dsname='emilia', split='en', hfds='amphion/Emilia-Dataset')
-def prepare_gigaspeech(item):
+def prepare_emilia(item):
     audio_format = '.wav'
     id=item['json']['id']
     
@@ -155,5 +139,59 @@ def prepare_gigaspeech(item):
     sample.metadata = item['json']
     return sample
 
+
+@register(dsname='libritts', hfds='parler-tts/libritts_r_filtered', name='clean', split='train.clean.360')
+def prepare_libritts(item):
+    audio_format = '.wav'
+    id=item['id']
+    
+    sample = Dataset.create_sample(id=id, audio_format=audio_format)
+    sample.raw_text = item['text_original']
+    sample.speaker_id = item['speaker_id']
+
+    sample.audio_array = item['audio']['array']
+    sample.sampling_rate = item['audio']['sampling_rate']
+    return sample
+
+@register(dsname='libritts_100', hfds='parler-tts/libritts_r_filtered', name='clean', split='train.clean.100')
+def prepare_libritts_100(item):
+    audio_format = '.wav'
+    id=item['id']
+    
+    sample = Dataset.create_sample(id=id, audio_format=audio_format)
+    sample.raw_text = item['text_original']
+    sample.speaker_id = item['speaker_id']
+
+    sample.audio_array = item['audio']['array']
+    sample.sampling_rate = item['audio']['sampling_rate']
+    return sample
+
+
+@register(dsname='libritts_other', hfds='parler-tts/libritts_r_filtered', name='other', split='train.other.500')
+def prepare_libritts_other(item):
+    audio_format = '.wav'
+    id=item['id']
+    
+    sample = Dataset.create_sample(id=id, audio_format=audio_format)
+    sample.raw_text = item['text_original']
+    sample.speaker_id = item['speaker_id']
+
+    sample.audio_array = item['audio']['array']
+    sample.sampling_rate = item['audio']['sampling_rate']
+    return sample
+
+
+@register(dsname='shrutilipi', hfds='collabora/ai4bharat-shrutilipi', split='train')
+def prepare_libritts_other(item):
+    audio_format = '.wav'
+    id=item['audio']['path'].replace('.wav', '')
+    
+    sample = Dataset.create_sample(id=id, audio_format=audio_format)
+    sample.raw_text = item['transcription']
+    sample.speaker_id = None
+
+    sample.audio_array = item['audio']['array']
+    sample.sampling_rate = item['audio']['sampling_rate']
+    return sample
 
 print(dataset_info)
