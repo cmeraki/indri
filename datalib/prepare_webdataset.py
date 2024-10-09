@@ -2,17 +2,27 @@ from tqdm import tqdm
 from glob import glob
 from pathlib import Path
 import webdataset as wds
-from datasets import load_dataset
+from datasets import load_dataset, DownloadConfig
 from huggingface_hub import upload_file
 
 from datalib.mappings import dataset_info
 
-def iter_hf_item(dsname, streaming=False):
+hf_token = os.environ['CMERAKI_HF_TOKEN']
+
+def iter_hf_item(dsname, streaming=True):
     dinfo = dataset_info[dsname]
     dconfig = {k: dinfo[k] for k in ['path', 'split', 'name']}
+    download_config = DownloadConfig(
+        resume_download=True,
+        num_proc=8,
+        max_retries=1000
+    )
 
     dataset = load_dataset(
         streaming=streaming,
+        trust_remote_code=True,
+        download_config=download_config,
+        token=hf_token,
         **dconfig
     )
 
@@ -42,11 +52,10 @@ if __name__ == '__main__':
 
     hf_user = 'cmeraki'
     hf_repo = 'audiofolder_webdataset'
-    hf_token = os.environ['CMERAKI_HF_TOKEN']
     cache_dir = Path(args.cache_dir).expanduser()
     Path(cache_dir).mkdir(parents=True, exist_ok=True)
 
-    with wds.ShardWriter(f"{Path(cache_dir, args.outprefix)}__%06d.tar") as sink:
+    with wds.ShardWriter(f"{Path(cache_dir, args.outprefix)}__%06d.tar", maxsize=1e9) as sink:
         for sample in generate_wds_samples(args.dsname):
             sink.write(sample)
 

@@ -71,7 +71,7 @@ def prepare_expresso(item):
     return sample
 
 
-@register(dsname='hifi_tts', hfds='MikhailT/hifi-tts', split='clean')
+@register(dsname='hifi_tts', hfds='MikhailT/hifi-tts', name='clean', split='train')
 def prepare_hifi_tts(item):
     id = "hifi_tts_" + item['file'].replace('/', '_')
 
@@ -80,7 +80,7 @@ def prepare_hifi_tts(item):
         "raw_text": item['text_no_preprocessing'],
         "speaker_id": item['speaker'],
         "sampling_rate": item['audio']['sampling_rate'],
-        "dataset": "hifi_tts_clean",
+        "dataset": "hifi_tts_clean_train",
         "metadata": {
             "language": "en",
             "duration": item['duration']
@@ -124,6 +124,7 @@ def prepare_globe(item):
     sample.sampling_rate = item['audio']['sampling_rate']
     return sample
 
+
 @register(dsname='ljspeech', hfds='keithito/lj_speech', split='train')
 def prepare_ljspeech(item):
     id = "ljspeech_" + item['id']
@@ -150,34 +151,60 @@ def prepare_ljspeech(item):
     return sample
 
 
-# @register(dsname='mls_eng_10k', hfds='parler-tts/mls_eng_10k')
+@register(dsname='mls_eng_10k', hfds='parler-tts/mls_eng_10k', split='train')
 def prepare_mlseng(item):
-    audio_format = '.wav'
-    id=item['audio']['path']
-    
-    sample = Dataset.create_sample(id=id, audio_format=audio_format)
-    sample.raw_text = item['transcript']
-    sample.speaker_id = item['speaker_id']
+    id = "mls_eng_10k_" + item['audio']['path'].replace('/', '_')
 
-    sample.audio_array = item['audio']['array']
-    sample.sampling_rate = item['audio']['sampling_rate']
+    json_data = {
+        "id": id,
+        "raw_text": item['transcript'],
+        "speaker_id": item['speaker_id'],
+        "sampling_rate": item['audio']['sampling_rate'],
+        "dataset": "mls_eng_10k_train",
+        "metadata": {
+            "language": "en"
+        }
+    }
+
+    wav_data = audio_to_wav_bytestring(item['audio']['array'], item['audio']['sampling_rate'])
+
+    sample = {
+        "__key__": id,
+        "json": json.dumps(json_data),
+        "wav": wav_data
+    }
+
     return sample
 
-# @register(dsname='gigaspeech', name='xl', split='train', hfds='speechcolab/gigaspeech')
+
+@register(dsname='gigaspeech', name='xl', split='train', hfds='speechcolab/gigaspeech')
 def prepare_gigaspeech(item):
-    audio_format = '.wav'
-    id=item['segment_id']
-    
-    sample = Dataset.create_sample(id=id, audio_format=audio_format)
-    sample.raw_text = item['text']
-    sample.speaker_id = None
+    id = "gs_" + item['segment_id']
 
-    sample.audio_array = item['audio']['array']
-    sample.sampling_rate = item['audio']['sampling_rate']
+    json_data = {
+        "id": id,
+        "raw_text": item['text'],
+        "speaker_id": None,
+        "sampling_rate": item['audio']['sampling_rate'],
+        "dataset": "gigaspeech_xl_train",
+        "metadata": {
+            "language": "en"
+        }
+    }
+
+    wav_data = audio_to_wav_bytestring(item['audio']['array'], item['audio']['sampling_rate'])
+
+    sample = {
+        "__key__": id,
+        "json": json.dumps(json_data),
+        "wav": wav_data
+    }
+
     return sample
+
 
 # @register(dsname='emilia', split='en', hfds='amphion/Emilia-Dataset')
-def prepare_gigaspeech(item):
+def prepare_emilia(item):
     audio_format = '.wav'
     id=item['json']['id']
     
