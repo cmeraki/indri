@@ -29,6 +29,33 @@ def find_audio_files(folder):
     return audio_files
 
 
+def join_chunks(speech_timestamps):
+    sampling_rate = 16000
+    max_chunk_size = 10*sampling_rate
+    max_silence_in_chunk = .5*sampling_rate
+    min_chunk_size = sampling_rate
+
+    new_timestamps = [{'start':0, 'end':0}]
+    for timestamp in speech_timestamps:
+        prev_chunk = new_timestamps[-1]
+
+        gap = prev_chunk['end'] - timestamp['start']
+        current_chunk_duration = prev_chunk['end'] - prev_chunk['start']
+        prev_chunk_duration = prev_chunk['end'] - prev_chunk['start']
+
+        if prev_chunk_duration < min_chunk_size:
+            prev_chunk['end'] = timestamp['end']
+         
+        elif (current_chunk_duration < max_chunk_size) and (gap < max_silence_in_chunk):
+            prev_chunk['end'] = timestamp['end']
+        
+        else:
+            new_timestamps.append(timestamp)
+    
+    return new_timestamps
+
+
+
 class Transcriber:
     def __init__(self, device):
         self.silero = load_silero_vad()
@@ -36,7 +63,7 @@ class Transcriber:
         self.model.eval()
 
     @torch.inference_mode()
-    def get_transcript(self, audio_path, tmp_dir='/tmp/transcribe/', verbose=True, batch_size=4):
+    def get_transcript(self, audio_path, tmp_dir='/tmp/transcribe/', verbose=True):
         
         Path(tmp_dir).mkdir(exist_ok=True)
         
@@ -45,7 +72,8 @@ class Transcriber:
 
         wav = read_audio(audio_path)
         speech_timestamps = get_speech_timestamps(wav, self.silero, threshold=0.4, min_silence_duration_ms=250, max_speech_duration_s=15)
-        
+        speech_timestamps = join_chunks(speech_timestamps)
+
         # take a large chunk and determine language
         start_of_speech = speech_timestamps[0]['start']
         chunk = wav[start_of_speech:start_of_speech + 16000*30].numpy()
@@ -87,7 +115,7 @@ def process(dsname, input_audio_dir, speaker_name, device):
     for file_idx, audio_file in tqdm(enumerate(audio_files), 'processing file ..'):
         try:
             print("WORKING ON", audio_file)
-            transcript = transcriber.get_transcript(audio_file, verbose=True)
+            transcript = transcriber.get_transcript(audio_file, verbose=False)
             for chunk_idx, elem in enumerate(transcript):
                 id = f'{file_idx}_chunk_{chunk_idx}'
                 sample = Dataset.create_sample(id=id)
