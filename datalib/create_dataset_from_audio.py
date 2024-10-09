@@ -37,6 +37,7 @@ def find_audio_files(folder):
 
 @torch.inference_mode()
 def get_transcript(audio_path):
+    print("WORKING ON", audio_path)
     wav = read_audio(audio_path)
     speech_timestamps = get_speech_timestamps(wav, silero)
     from tqdm import tqdm
@@ -44,7 +45,7 @@ def get_transcript(audio_path):
     data = []
     for timestamp in speech_timestamps:
         subwav = wav[timestamp['start']:timestamp['end']]
-        transcript = whisper_model.transcribe(audio=subwav, initial_prompt=text, language='hi') 
+        transcript = whisper_model.transcribe(audio=subwav, initial_prompt=text) 
         text += transcript['text']
         transcript['audio'] = subwav
         yield transcript
