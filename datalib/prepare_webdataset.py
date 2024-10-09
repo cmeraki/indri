@@ -72,4 +72,3 @@ if __name__ == '__main__':
         )
 
     print(f'Uploaded {args.dsname} to huggingface')
-
