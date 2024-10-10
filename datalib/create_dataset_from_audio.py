@@ -18,7 +18,7 @@ from datasets import load_dataset
 
 
 def find_audio_files(folder):
-    audio_extensions = ('.mp3', '.flac', '.wav', '.ogg')
+    audio_extensions = ('.mp3', '.flac', '.wav', '.ogg', '.m4a')
     audio_files = []
     for root, dirs, files in os.walk(folder):
         for file in files:
@@ -35,8 +35,9 @@ def join_chunks(speech_timestamps):
     max_silence_in_chunk = .5*sampling_rate
     min_chunk_size = sampling_rate
 
-    new_timestamps = [{'start':0, 'end':0}]
-    for timestamp in speech_timestamps:
+    new_timestamps = speech_timestamps[0]
+    
+    for timestamp in speech_timestamps[1:]:
         prev_chunk = new_timestamps[-1]
 
         gap = prev_chunk['end'] - timestamp['start']
@@ -81,7 +82,7 @@ class Transcriber:
         prompt = res['text']
         language = res['language']
         
-        print("DETECTED LANGUAGE", res['language'])
+        print("DETECTED LANGUAGE", res['language']) 
         print("PROMPT", prompt)
         print("NUM CHUNKS", len(speech_timestamps))
 
