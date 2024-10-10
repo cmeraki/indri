@@ -16,10 +16,11 @@ headers = {
 
 # Manual mapping of allowed speaker IDs in the app
 SPEAKERS = []
-with open('allowed_speakers.jsonl', 'r') as f:
+with open('omni/allowed_speakers.jsonl', 'r') as f:
     for ln in f:
-        if f:
-            SPEAKERS.append(json.loads(ln)['combined'])
+        if not f:
+            continue
+        SPEAKERS.append(json.loads(ln)['combined'])
 
 
 def _tts(text, speaker):

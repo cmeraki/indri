@@ -36,7 +36,7 @@ Path(CACHE_DIR).mkdir(exist_ok=True, parents=True)
 
 print('Cache directory at: ', CACHE_DIR)
 
-SPEAKER_FILE = 'allowed_speakers.jsonl'
+SPEAKER_FILE = 'omni/allowed_speakers.jsonl'
 
 class Config:
     n_codebooks = 4
