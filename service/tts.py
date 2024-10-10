@@ -8,7 +8,7 @@ from typing import List
 from commons import CTX, TEXT, MIMI, CONVERT
 from commons import Config as cfg
 from omni.logger import get_logger
-from omni.train import get_text_tokenizer
+from omni.train_with_mimi import get_text_tokenizer
 import service.utils as utils
 
 logger = get_logger(__name__)

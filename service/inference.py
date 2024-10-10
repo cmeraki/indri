@@ -1,10 +1,9 @@
 import base64
 import numpy as np
-from typing import List
+from typing import List, Tuple
 from pydantic import BaseModel
 from pathlib import Path
 from fastapi import FastAPI, HTTPException
-
 
 from omni.logger import get_logger
 from service.tts import TTS
@@ -19,10 +18,12 @@ model = TTS(Path('~/projects/romit/mimi_hf').expanduser(), device='cuda:1')
 class TTSRequest(BaseModel):
     text: str
 
-# class TTSResponse(BaseModel):
-#     audio: np.ndarray
+class TTSResponse(BaseModel):
+    array: str
+    dtype: str
+    shape: Tuple
 
-@app.post("/tts")#, response_model=TTSResponse)
+@app.post("/tts", response_model=TTSResponse)
 def text_to_speech(requests: TTSRequest):
     logger.info(f'Received text: {requests.text}')
 
