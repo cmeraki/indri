@@ -1,3 +1,6 @@
+import sys
+sys.path.append('omni/')
+
 import base64
 import numpy as np
 from typing import List, Tuple
@@ -13,7 +16,10 @@ logger = get_logger(__name__)
 app = FastAPI()
 
 global model
-model = TTS(Path('~/projects/romit/mimi_hf').expanduser(), device='cuda:1')
+model = TTS(
+    'cmeraki/mimi_tts_hf',
+    device='cuda:0'
+)
 
 class TTSRequest(BaseModel):
     text: str
