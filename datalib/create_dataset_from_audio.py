@@ -2,7 +2,6 @@ import whisper
 import json
 from pathlib import Path
 from tqdm import tqdm
-from datalib.datalib import Dataset
 import torch
 import os
 from tqdm import tqdm
@@ -28,7 +27,7 @@ def join_chunks(speech_timestamps):
     max_silence_in_chunk = .5*sampling_rate # secs * sr
     min_chunk_size = 1 * sampling_rate # secs * sr 
 
-    new_timestamps = speech_timestamps[0]
+    new_timestamps = [speech_timestamps[0]]
 
     for timestamp in speech_timestamps[1:]:
         prev_chunk = new_timestamps[-1]
@@ -57,15 +56,18 @@ class Transcriber:
         self.model.eval()
 
     @torch.inference_mode()
-    def get_transcript(self, audio_path, tmp_dir='/tmp/transcribe/', verbose=True):
+    def get_transcript(self, audio_path=None, wav=None, verbose=True):
+        assert (wav is not None) or (audio_path is not None)
         
-        Path(tmp_dir).mkdir(exist_ok=True)
+        if wav is None and audio_path is not None:
+            wav = read_audio(audio_path)
         
-        # langprobs = self.detect_language(audio_path)
-        # print("Language probs", langprobs)
-
-        wav = read_audio(audio_path)
-        speech_timestamps = get_speech_timestamps(wav, self.silero, threshold=0.4, min_silence_duration_ms=250, max_speech_duration_s=15)
+        speech_timestamps = get_speech_timestamps(wav, 
+                                                  self.silero, 
+                                                  threshold=0.4, 
+                                                  min_silence_duration_ms=250, 
+                                                  max_speech_duration_s=15)
+        
         speech_timestamps = join_chunks(speech_timestamps)
 
         # take a large chunk and determine language
@@ -75,13 +77,13 @@ class Transcriber:
         prompt = res['text']
         language = res['language']
         
-        print("DETECTED LANGUAGE", res['language']) 
+        print("DETECTED LANGUAGE", res['language'])
         print("PROMPT", prompt)
         print("NUM CHUNKS", len(speech_timestamps))
 
 
         if language not in {'hi', 'en'}:
-            language = 'hi'
+            language = 'en'
 
         updated_prompt = prompt
         for idx, timestamp in enumerate(speech_timestamps):

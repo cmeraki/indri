@@ -50,13 +50,13 @@ class Infer:
         self.acoustic_modality_token = self.text_tokenizer.encode(cfg.MODALITY_TOKENS[MIMI])
     
     def deserialize_tokens(self, tokens):
-            cb1 = tokens[0::4]
-            cb2 = tokens[1::4]
-            cb3 = tokens[2::4]
-            cb4 = tokens[3::4]
-            min_shape = min(cb1.shape, cb2.shape, cb3.shape, cb4.shape)[0]
-            acoustic_tokens = np.stack([cb1[:min_shape], cb2[:min_shape] - 2048, cb3[:min_shape] - 4096, cb4[:min_shape] - 6144])
-            return acoustic_tokens
+        cb1 = tokens[0::4]
+        cb2 = tokens[1::4]
+        cb3 = tokens[2::4]
+        cb4 = tokens[3::4]
+        min_shape = min(cb1.shape, cb2.shape, cb3.shape, cb4.shape)[0]
+        acoustic_tokens = np.stack([cb1[:min_shape], cb2[:min_shape] - 2048, cb3[:min_shape] - 4096, cb4[:min_shape] - 6144])
+        return acoustic_tokens
 
 
     def normalize_text(self, text):
