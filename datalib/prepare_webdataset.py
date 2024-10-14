@@ -1,3 +1,4 @@
+import os
 from tqdm import tqdm
 from glob import glob
 from pathlib import Path
@@ -9,7 +10,7 @@ from datalib.mappings import dataset_info
 
 hf_token = os.environ['CMERAKI_HF_TOKEN']
 
-def iter_hf_item(dsname, streaming=True):
+def iter_hf_item(dsname, streaming=False):
     dinfo = dataset_info[dsname]
     dconfig = {k: dinfo[k] for k in ['path', 'split', 'name']}
     download_config = DownloadConfig(
@@ -21,7 +22,7 @@ def iter_hf_item(dsname, streaming=True):
     dataset = load_dataset(
         streaming=streaming,
         trust_remote_code=True,
-        download_config=download_config,
+        # download_config=download_config,
         token=hf_token,
         **dconfig
     )

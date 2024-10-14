@@ -28,7 +28,7 @@ def prepare_jenny(item):
         "id": id,
         "raw_text": item['transcription_normalised'],
         "speaker_id": "jenny",
-        "sampling_rate": item['audio']['sampling_rate'],
+        "sampling_rate": 16000,
         "dataset": "jenny_train",
         "metadata": {
             "language": "en"
@@ -53,7 +53,7 @@ def prepare_expresso(item):
         "id": id,
         "raw_text": item['text'],
         "speaker_id": item['speaker_id'],
-        "sampling_rate": item['audio']['sampling_rate'],
+        "sampling_rate": 16000,
         "dataset": "expresso_train",
         "metadata": {
             "language": "en"
@@ -79,7 +79,7 @@ def prepare_hifi_tts(item):
         "id": id,
         "raw_text": item['text_no_preprocessing'],
         "speaker_id": item['speaker'],
-        "sampling_rate": item['audio']['sampling_rate'],
+        "sampling_rate": 16000,
         "dataset": "hifi_tts_clean_train",
         "metadata": {
             "language": "en",
@@ -133,7 +133,7 @@ def prepare_ljspeech(item):
         "id": id,
         "raw_text": item['text'],
         "speaker_id": "ljspeech",
-        "sampling_rate": item['audio']['sampling_rate'],
+        "sampling_rate": 16000,
         "dataset": "ljspeech_train",
         "metadata": {
             "language": "en"
