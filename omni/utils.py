@@ -1,4 +1,5 @@
 import os
+import io
 import torch
 import torchaudio
 import numpy as np
@@ -45,3 +46,35 @@ def find_audio_files(folder):
 def replace_consecutive(arr):
     mask = np.concatenate(([True], arr[1:] != arr[:-1]))
     return arr[mask]
+
+
+def audio_to_wav_bytestring(audio_array, sample_rate):
+    """
+    Convert np audio array to a wav bytestring that can be used to save an audio file.
+    """
+    audio_array = torch.tensor(audio_array, dtype=torch.float32)
+    audio_array = audio_array.unsqueeze(dim=0)
+
+    audio_array = convert_audio(
+        audio_array,
+        sr=sample_rate,
+        target_sr=16000,
+        target_channels=1
+    )
+
+    buffer = io.BytesIO()
+
+    torchaudio.save(
+        buffer,
+        audio_array,
+        sample_rate=16000,
+        format='mp3',
+        encoding='PCM_S',
+        bits_per_sample=16,
+        backend='ffmpeg',
+        compression=torchaudio.io.CodecConfig(bit_rate=64000)
+    )
+
+    mp3_bytestring = buffer.getvalue()
+
+    return mp3_bytestring
