@@ -31,12 +31,12 @@ def find_audio_files(folder):
 
 def join_chunks(speech_timestamps):
     sampling_rate = 16000
-    max_chunk_size = 10*sampling_rate
-    max_silence_in_chunk = .5*sampling_rate
-    min_chunk_size = sampling_rate
+    max_chunk_size = 10*sampling_rate # secs * sr
+    max_silence_in_chunk = .5*sampling_rate # secs * sr
+    min_chunk_size = 1 * sampling_rate # secs * sr 
 
     new_timestamps = speech_timestamps[0]
-    
+
     for timestamp in speech_timestamps[1:]:
         prev_chunk = new_timestamps[-1]
 
