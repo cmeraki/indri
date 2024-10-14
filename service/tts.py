@@ -18,6 +18,29 @@ logger = get_logger(__name__)
 # TODO: fp8 quantization for inference
 # TODO: vLLM server for best performance
 
+def alternative_logits_processor(past_token_ids, logits):
+    """
+    Logit processor for alternating codebooks
+    Given a sequence of logits, we want to make sure that the alternating tokens
+    are chosen from different codebooks.
+
+    We receive a tensor of token ids and a tensor of logits.
+    logits is a tensor of shape (seq_len, vocab_size)
+    """
+    logger.info(f'Logits shape: {logits.shape}')
+    new_logits = logits.clone()
+
+    seq_len, vocab_size = new_logits.shape
+
+    # Get the index of the codebook for each token id
+    codebook_indices = token_ids % 4
+
+    # Get the unique codebook indices
+    unique_codebook_indices = torch.unique(codebook_indices)
+
+    return new_logits
+
+
 class TTS:
     def __init__(self, model_path, device):
         self.device = device
@@ -41,7 +64,8 @@ class TTS:
             temperature=0.4,
             top_k=100,
             stop_token_ids=self.stop_token,
-            max_tokens=1024
+            max_tokens=1024,
+            logits_processors=
         )
 
     def preprocess_text(self, text: str) -> List[str]:
