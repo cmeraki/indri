@@ -13,6 +13,11 @@ import service.utils as utils
 
 logger = get_logger(__name__)
 
+# TODO: Add logit processor for vLLM
+# TODO: Try out Async engine for streaming audio
+# TODO: fp8 quantization for inference
+# TODO: vLLM server for best performance
+
 class TTS:
     def __init__(self, model_path, device):
         self.device = device
@@ -61,14 +66,13 @@ class TTS:
     def generate(
         self,
         text: str,
-        speaker='[spkr_hifi_tts_9017]',
-        batch_size=32
+        speaker='[spkr_hifi_tts_9017]'
     ):
         batch_text = self.preprocess_text(text)
 
         logger.debug(f'Texts after preprocessing: {batch_text}')
         input_tokens = [self.prepare_tokens(text, speaker) for text in batch_text]
-        logger.debug(f'Input tokens: {input_tokens} and batch size: {batch_size}')
+        logger.info(f'Input tokens shape: {sum([len(t) for t in input_tokens])}')
 
         out = self.model.generate(
             prompt_token_ids=input_tokens,
@@ -79,7 +83,11 @@ class TTS:
         for o in out:
             o = o.outputs[0].token_ids
             o = np.array(o)
-            end = np.where(o == self.stop_token[0])[0][0]
+            end = np.where(o == self.stop_token[0])[0]
+            if len(end) > 0:
+                end = end[0]
+            else:
+                end = len(o)
             o = o[:end]
 
             o = o - cfg.OFFSET[MIMI]
@@ -88,9 +96,13 @@ class TTS:
         mimi_tokens = utils.deserialize_tokens(np.array(mimi_tokens))
         mimi_tokens = torch.tensor(np.expand_dims(mimi_tokens, axis=0), device=self.device)
 
+        logger.info(f'Mimi tokens shape: {mimi_tokens.shape}')
+
         with torch.no_grad():
             audio = self.audio_tokenizer.decode(mimi_tokens).audio_values
             audio = audio.detach().cpu().numpy()
+
+        logger.info(f'Audio shape: {audio.shape}')
 
         return audio
 

@@ -32,8 +32,9 @@ def _tts(text, speaker):
     data = response.json()
     decoded = base64.b64decode(data['array'])
     array = np.frombuffer(decoded, dtype=np.dtype(data['dtype'])).reshape(data['shape'])
+    sample_rate = data['sample_rate']
 
-    return 24_000, array[0][0]
+    return sample_rate, array[0][0]
 
 
 with gr.Blocks() as demo:

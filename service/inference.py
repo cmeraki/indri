@@ -28,6 +28,7 @@ class TTSResponse(BaseModel):
     array: str
     dtype: str
     shape: Tuple
+    sample_rate: int
 
 @app.post("/tts", response_model=TTSResponse)
 def text_to_speech(requests: TTSRequest):
@@ -39,7 +40,8 @@ def text_to_speech(requests: TTSRequest):
     return {
         "array": encoded,
         "dtype": str(results.dtype),
-        "shape": results.shape
+        "shape": results.shape,
+        "sample_rate": 24000
     }
 
 if __name__ == "__main__":
