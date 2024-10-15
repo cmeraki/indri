@@ -52,7 +52,7 @@ def join_chunks(speech_timestamps):
 class Transcriber:
     def __init__(self, device):
         self.silero = load_silero_vad()
-        self.model = whisper.load_model("turbo", device=device)
+        self.model = whisper.load_model("large-v3-turbo", device=device)
         self.model.eval()
 
     @torch.inference_mode()
@@ -63,7 +63,7 @@ class Transcriber:
             wav = read_audio(audio_path)
         
         speech_timestamps = get_speech_timestamps(wav, 
-                                                  self.silero, 
+                                                  self.silero,
                                                   threshold=0.4, 
                                                   min_silence_duration_ms=250, 
                                                   max_speech_duration_s=15)
@@ -82,8 +82,8 @@ class Transcriber:
         print("NUM CHUNKS", len(speech_timestamps))
 
 
-        if language not in {'hi', 'en'}:
-            language = 'en'
+        # if language not in {'hi', 'en'}:
+        #     language = 'en'
 
         updated_prompt = prompt
         for idx, timestamp in enumerate(speech_timestamps):
