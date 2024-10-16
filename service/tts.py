@@ -35,6 +35,8 @@ def alternative_logits_processor(past_token_ids: Tuple[int], logits: torch.Tenso
         torch.Tensor - Processed logits. Shape (vocab_size)
     """
 
+    return logits
+
     kwargs = {
         'num_codebooks': 4,
         'codebook_size': 2048,
@@ -47,10 +49,12 @@ def alternative_logits_processor(past_token_ids: Tuple[int], logits: torch.Tenso
     logger.info(f'Logits shape: {logits.shape}, past_token_ids: {len(past_token_ids)}, codebook indices: {codebook_indices}')
 
     mask = torch.zeros_like(new_logits)
-    mask[kwargs['offset'] + codebook_indices * kwargs['codebook_size'] : kwargs['offset'] + (codebook_indices + 1) * kwargs['codebook_size']] = 1
-    new_logits = new_logits * mask
+    start_idx = kwargs['offset'] + codebook_indices * kwargs['codebook_size']
+    end_idx = kwargs['offset'] + (codebook_indices + 1) * kwargs['codebook_size']
+    logger.info(f'Start idx: {start_idx}, end idx: {end_idx}')
 
-    logger.info(f'New logits: {new_logits}')
+    mask[start_idx:end_idx] = 1
+    new_logits = new_logits * mask
 
     return new_logits
 

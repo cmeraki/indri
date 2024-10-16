@@ -5,6 +5,7 @@ import base64
 from typing import Tuple, List
 from pydantic import BaseModel
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from omni.logger import get_logger
 from service.tts import TTS
@@ -12,6 +13,14 @@ from service.tts import TTS
 logger = get_logger(__name__)
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 global model
 model = TTS(
@@ -47,7 +56,9 @@ def text_to_speech(requests: TTSRequest):
 
 @app.get("/speakers", response_model=TTSSpeakersResponse)
 def available_speakers():
-    return ['Speaker 1', 'Speaker 2', 'Speaker 3']
+    return {
+        "speakers": ['Speaker 1', 'Speaker 2', 'Speaker 3']
+    }
 
 if __name__ == "__main__":
     import uvicorn
