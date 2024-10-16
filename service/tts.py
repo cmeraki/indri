@@ -5,7 +5,7 @@ import torch
 import numpy as np
 from transformers import MimiModel
 from vllm import LLM, SamplingParams
-from typing import List
+from typing import List, Tuple
 
 from commons import CTX, TEXT, MIMI, CONVERT
 from commons import Config as cfg
@@ -21,31 +21,38 @@ logger = get_logger(__name__)
 # TODO: vLLM server for best performance
 
 
-def alternative_logits_processor(prompt_tokens_ids, past_token_ids, logits):
+def alternative_logits_processor(past_token_ids: Tuple[int], logits: torch.Tensor) -> torch.Tensor:
     """
     Logit processor for alternating codebooks
     Given a sequence of logits, we want to make sure that the alternating tokens
     are chosen from different codebooks.
 
-    We receive a tensor of token ids and a tensor of logits.
-    logits is a tensor of shape (vocab_size)
+    Args:
+        past_token_ids: Tuple[int] - Tuple of past token ids
+        logits: torch.Tensor - Logits to process. Shape (vocab_size)
+
+    Returns:
+        torch.Tensor - Processed logits. Shape (vocab_size)
     """
+
     kwargs = {
         'num_codebooks': 4,
         'codebook_size': 2048,
         'offset': cfg.OFFSET[MIMI],
     }
 
-    logger.info(f'Logits shape: {logits.shape}, past_token_ids: {past_token_ids}, prompt_tokens_ids: {prompt_tokens_ids}')
-    # new_logits = logits.clone()
+    new_logits = logits.clone()
+    codebook_indices = len(past_token_ids) % kwargs['num_codebooks']
 
-    # codebook_indices = (past_token_ids.shape[-1] - prompt_tokens_ids.shape[-1]) % kwargs['num_codebooks']
-    # logger.info(f'Codebook indices: {codebook_indices}')
-    # mask = torch.zeros_like(new_logits)
-    # mask[:, kwargs['offset'] + codebook_indices * kwargs['codebook_size'] : kwargs['offset'] + (codebook_indices + 1) * kwargs['codebook_size']] = 1
-    # new_logits = new_logits * mask
+    logger.info(f'Logits shape: {logits.shape}, past_token_ids: {len(past_token_ids)}, codebook indices: {codebook_indices}')
 
-    return logits
+    mask = torch.zeros_like(new_logits)
+    mask[kwargs['offset'] + codebook_indices * kwargs['codebook_size'] : kwargs['offset'] + (codebook_indices + 1) * kwargs['codebook_size']] = 1
+    new_logits = new_logits * mask
+
+    logger.info(f'New logits: {new_logits}')
+
+    return new_logits
 
 
 class TTS:
