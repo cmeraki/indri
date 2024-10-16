@@ -1,4 +1,6 @@
-import os
+import sys
+sys.path.append('omni/')
+
 import torch
 import numpy as np
 from transformers import MimiModel
@@ -18,27 +20,32 @@ logger = get_logger(__name__)
 # TODO: fp8 quantization for inference
 # TODO: vLLM server for best performance
 
-def alternative_logits_processor(past_token_ids, logits):
+
+def alternative_logits_processor(prompt_tokens_ids, past_token_ids, logits):
     """
     Logit processor for alternating codebooks
     Given a sequence of logits, we want to make sure that the alternating tokens
     are chosen from different codebooks.
 
     We receive a tensor of token ids and a tensor of logits.
-    logits is a tensor of shape (seq_len, vocab_size)
+    logits is a tensor of shape (vocab_size)
     """
-    logger.info(f'Logits shape: {logits.shape}')
-    new_logits = logits.clone()
+    kwargs = {
+        'num_codebooks': 4,
+        'codebook_size': 2048,
+        'offset': cfg.OFFSET[MIMI],
+    }
 
-    seq_len, vocab_size = new_logits.shape
+    logger.info(f'Logits shape: {logits.shape}, past_token_ids: {past_token_ids}, prompt_tokens_ids: {prompt_tokens_ids}')
+    # new_logits = logits.clone()
 
-    # Get the index of the codebook for each token id
-    codebook_indices = token_ids % 4
+    # codebook_indices = (past_token_ids.shape[-1] - prompt_tokens_ids.shape[-1]) % kwargs['num_codebooks']
+    # logger.info(f'Codebook indices: {codebook_indices}')
+    # mask = torch.zeros_like(new_logits)
+    # mask[:, kwargs['offset'] + codebook_indices * kwargs['codebook_size'] : kwargs['offset'] + (codebook_indices + 1) * kwargs['codebook_size']] = 1
+    # new_logits = new_logits * mask
 
-    # Get the unique codebook indices
-    unique_codebook_indices = torch.unique(codebook_indices)
-
-    return new_logits
+    return logits
 
 
 class TTS:
@@ -51,7 +58,7 @@ class TTS:
         self.model = LLM(
             model=model_path,
             skip_tokenizer_init=True,
-            gpu_memory_utilization=0.9,
+            gpu_memory_utilization=0.8,
             dtype='float16'
         )
 
@@ -65,7 +72,7 @@ class TTS:
             top_k=100,
             stop_token_ids=self.stop_token,
             max_tokens=1024,
-            logits_processors=
+            logits_processors=[alternative_logits_processor]
         )
 
     def preprocess_text(self, text: str) -> List[str]:

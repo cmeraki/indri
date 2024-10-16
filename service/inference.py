@@ -2,11 +2,9 @@ import sys
 sys.path.append('omni/')
 
 import base64
-import numpy as np
-from typing import List, Tuple
+from typing import Tuple, List
 from pydantic import BaseModel
-from pathlib import Path
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 
 from omni.logger import get_logger
 from service.tts import TTS
@@ -30,6 +28,9 @@ class TTSResponse(BaseModel):
     shape: Tuple
     sample_rate: int
 
+class TTSSpeakersResponse(BaseModel):
+    speakers: List[str]
+
 @app.post("/tts", response_model=TTSResponse)
 def text_to_speech(requests: TTSRequest):
     logger.info(f'Received text: {requests.text}')
@@ -43,6 +44,10 @@ def text_to_speech(requests: TTSRequest):
         "shape": results.shape,
         "sample_rate": 24000
     }
+
+@app.get("/speakers", response_model=TTSSpeakersResponse)
+def available_speakers():
+    return ['Speaker 1', 'Speaker 2', 'Speaker 3']
 
 if __name__ == "__main__":
     import uvicorn
