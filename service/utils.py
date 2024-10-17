@@ -15,6 +15,7 @@ def deserialize_tokens(tokens):
     min_shape = min(cb1.shape, cb2.shape, cb3.shape, cb4.shape)[0]
     acoustic_tokens = np.stack([cb1[:min_shape], cb2[:min_shape] - 2048, cb3[:min_shape] - 4096, cb4[:min_shape] - 6144])
 
+    assert acoustic_tokens.shape == (4, min_shape), 'Deserialized tokens does not have the correct shape'
     return acoustic_tokens
 
 
@@ -29,12 +30,12 @@ def sanitize_text(text: str) -> list[str]:
         list[str]: List of sentences, split by punctuation (., !, ?)
     """
     text = text.lower()
-    text = re.sub(r'\n+', ' ', text)  # Multiple newlines to a space
-    text = re.sub(r'[ \t]+', ' ', text)  # Multiple spaces/tabs to a single space
+    text = re.sub(r'\n+', ' ', text)
+    text = re.sub(r'[ \t]+', ' ', text)
 
-    allowed_pattern = r'[^a-z0-9\s,\.?\n\!]' # Only allow a-z, 0-9, space, comma, period, question mark and newline
+    allowed_pattern = r'[^a-z0-9\s,\.?\n\!]'
     text = re.sub(allowed_pattern, '', text)
-    text = re.sub(r'([,\.?])+', r'\1', text)  # Remove repeated punctuation
+    text = re.sub(r'([,\.?])+', r'\1', text)
 
     pattern = r'([.!?])'
     segments = re.split(pattern, text)

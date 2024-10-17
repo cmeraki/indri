@@ -2,9 +2,10 @@ import sys
 sys.path.append('omni/')
 
 import base64
-from typing import Tuple, List
+from enum import Enum
+from typing import Tuple, List, Optional
 from pydantic import BaseModel
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from .tts import TTS
@@ -13,7 +14,7 @@ from .logger import get_logger
 logger = get_logger(__name__)
 
 # TODO: Propogate speaker to tts
-# TODO: Exception handling
+# DONE: Exception handling
 
 app = FastAPI()
 
@@ -36,8 +37,14 @@ model = TTS(
     device='cuda:0'
 )
 
+class Speakers(Enum):
+    SPEAKER_1 = 'Speaker 1'
+    SPEAKER_2 = 'Speaker 2'
+    SPEAKER_3 = 'Speaker 3'
+
 class TTSRequest(BaseModel):
     text: str
+    speaker: Optional[Speakers] = None
 
 class TTSResponse(BaseModel):
     array: str
@@ -52,9 +59,13 @@ class TTSSpeakersResponse(BaseModel):
 def text_to_speech(requests: TTSRequest):
     logger.info(f'Received text: {requests.text}')
 
-    results = model.generate(requests.text)
-    encoded = base64.b64encode(results.tobytes()).decode('utf-8')
+    try:
+        results = model.generate(requests.text)
+    except Exception as e:
+        logger.critical(f'Error in model generation: {e}')
+        raise HTTPException(status_code=500, detail=str(e))
 
+    encoded = base64.b64encode(results.tobytes()).decode('utf-8')
     return {
         "array": encoded,
         "dtype": str(results.dtype),
@@ -65,7 +76,11 @@ def text_to_speech(requests: TTSRequest):
 @app.get("/speakers", response_model=TTSSpeakersResponse)
 def available_speakers():
     return {
-        "speakers": ['Speaker 1', 'Speaker 2', 'Speaker 3']
+        "speakers": [
+            Speakers.SPEAKER_1,
+            Speakers.SPEAKER_2,
+            Speakers.SPEAKER_3
+        ]
     }
 
 if __name__ == "__main__":

@@ -21,7 +21,7 @@ logger = get_logger(__name__)
 # TODO: Try out Async engine for streaming audio
 # TODO: fp8 quantization for inference
 # TODO: vLLM server for best performance
-# TOOD: Expose error messages - Decoding errors or model errors
+# DONE: Expose error messages - Decoding errors or model errors
 
 class TTS:
     def __init__(self, model_path, device):
@@ -47,13 +47,16 @@ class TTS:
             'per_codebook_size': cfg.per_codebook_size,
             'offset': cfg.OFFSET[MIMI]
         }
+        logits_processors = [
+            partial(utils.alternative_logits_processor, **logits_processor_kwargs)
+        ]
 
         self.sampling_params = SamplingParams(
             temperature=0.4,
             top_k=100,
             stop_token_ids=self.stop_token,
             max_tokens=1024,
-            logits_processors=[partial(utils.alternative_logits_processor, **logits_processor_kwargs)]
+            # logits_processors=logits_processors
         )
 
     def prepare_tokens(self, incoming_text, speaker) -> List[int]:
@@ -78,30 +81,36 @@ class TTS:
 
         logger.debug(f'Texts after preprocessing: {batch_text}')
         input_tokens = [self.prepare_tokens(text, speaker) for text in batch_text]
-        logger.info(f'Input tokens shape: {sum([len(t) for t in input_tokens])}')
+        logger.info(f'Input tokens shape: {sum([len(t) for t in input_tokens])} and batch size: {len(batch_text)}')
 
-        out = self.model.generate(
-            prompt_token_ids=input_tokens,
-            sampling_params=self.sampling_params
-        )
+        try:
+            out = self.model.generate(
+                prompt_token_ids=input_tokens,
+                sampling_params=self.sampling_params
+            )
+        except Exception as e:
+            logger.error(f'Error in generating tokens: {e}')
+            raise Error(f'Error in generating tokens')
 
         mimi_tokens = []
-        for o in out:
-            o = o.outputs[0].token_ids
-            o = np.array(o)
+
+        for i, o in enumerate(out):
+            o = np.array(o.outputs[0].token_ids)
             end = np.where(o == self.stop_token[0])[0]
             if len(end) > 0:
                 end = end[0]
             else:
                 end = len(o)
             o = o[:end]
-
             o = o - cfg.OFFSET[MIMI]
-            mimi_tokens.extend(o)
+            o = utils.deserialize_tokens(o)
+            assert np.all(o >= 0), f'Negative token index generated for batch {i}'
 
-        mimi_tokens = utils.deserialize_tokens(np.array(mimi_tokens))
+            mimi_tokens.append(o)
+
+        mimi_tokens = np.concatenate(mimi_tokens, axis=1)
+
         mimi_tokens = torch.tensor(np.expand_dims(mimi_tokens, axis=0), device=self.device)
-
         logger.info(f'Mimi tokens shape: {mimi_tokens.shape}')
 
         with torch.no_grad():

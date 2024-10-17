@@ -31,6 +31,10 @@ def _tts(text, speaker):
 
     response = requests.post(url, headers=headers, json=data)
     data = response.json()
+
+    if response.status_code != 200:
+        raise gr.Error(f'Error in TTS, {data["detail"]}', duration=10)
+
     decoded = base64.b64decode(data['array'])
     array = np.frombuffer(decoded, dtype=np.dtype(data['dtype'])).reshape(data['shape'])
     sample_rate = data['sample_rate']
