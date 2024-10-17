@@ -12,6 +12,9 @@ from .logger import get_logger
 
 logger = get_logger(__name__)
 
+# TODO: Propogate speaker to tts
+# TODO: Exception handling
+
 app = FastAPI()
 
 app.add_middleware(

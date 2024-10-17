@@ -17,10 +17,11 @@ from .logger import get_logger
 
 logger = get_logger(__name__)
 
-# TODO: Add logit processor for vLLM
+# DONE: Add logit processor for vLLM
 # TODO: Try out Async engine for streaming audio
 # TODO: fp8 quantization for inference
 # TODO: vLLM server for best performance
+# TOOD: Expose error messages - Decoding errors or model errors
 
 class TTS:
     def __init__(self, model_path, device):
@@ -55,12 +56,6 @@ class TTS:
             logits_processors=[partial(utils.alternative_logits_processor, **logits_processor_kwargs)]
         )
 
-    def preprocess_text(self, text: str) -> List[str]:
-        text = utils.normalize_text(text)
-        text = utils.split_and_join_sentences(text)
-
-        return text
-
     def prepare_tokens(self, incoming_text, speaker) -> List[int]:
         incoming_tokens = self.text_tokenizer.encode(incoming_text)
 
@@ -79,7 +74,7 @@ class TTS:
         text: str,
         speaker='[spkr_hifi_tts_9017]'
     ):
-        batch_text = self.preprocess_text(text)
+        batch_text = utils.sanitize_text(text)
 
         logger.debug(f'Texts after preprocessing: {batch_text}')
         input_tokens = [self.prepare_tokens(text, speaker) for text in batch_text]

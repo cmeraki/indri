@@ -6,16 +6,6 @@ from typing import Tuple
 from .logger import get_logger
 logger = get_logger(__name__)
 
-def normalize_text(text):
-    text = text.lower()
-    text = text.replace("<comma>", ',')
-    text = text.replace("<period>", '.')
-    text = text.replace('<questionmark>', '?')
-    text = text.replace('<exclamationpoint>', '!')
-    text = text.replace("\n", " ")
-    return text
-
-
 def deserialize_tokens(tokens):
     cb1 = tokens[0::4]
     cb2 = tokens[1::4]
@@ -28,7 +18,24 @@ def deserialize_tokens(tokens):
     return acoustic_tokens
 
 
-def split_and_join_sentences(text):
+def sanitize_text(text: str) -> list[str]:
+    """
+    Sanitize text to be used for TTS
+
+    Args:
+        text (str): Text to sanitize
+
+    Returns:
+        list[str]: List of sentences, split by punctuation (., !, ?)
+    """
+    text = text.lower()
+    text = re.sub(r'\n+', ' ', text)  # Multiple newlines to a space
+    text = re.sub(r'[ \t]+', ' ', text)  # Multiple spaces/tabs to a single space
+
+    allowed_pattern = r'[^a-z0-9\s,\.?\n\!]' # Only allow a-z, 0-9, space, comma, period, question mark and newline
+    text = re.sub(allowed_pattern, '', text)
+    text = re.sub(r'([,\.?])+', r'\1', text)  # Remove repeated punctuation
+
     pattern = r'([.!?])'
     segments = re.split(pattern, text)
 
