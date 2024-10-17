@@ -5,9 +5,10 @@ import torch
 import numpy as np
 from transformers import MimiModel
 from vllm import LLM, SamplingParams
-from typing import List, Tuple
+from typing import List
+from functools import partial
 
-from commons import CTX, TEXT, MIMI, CONVERT
+from commons import TEXT, MIMI, CONVERT
 from commons import Config as cfg
 from omni.train_with_mimi import get_text_tokenizer
 
@@ -40,12 +41,18 @@ class TTS:
         self.text_modality_token = self.text_tokenizer.encode(cfg.MODALITY_TOKENS[TEXT])
         self.acoustic_modality_token = self.text_tokenizer.encode(cfg.MODALITY_TOKENS[MIMI])
 
+        logits_processor_kwargs = {
+            'n_codebooks': cfg.n_codebooks,
+            'per_codebook_size': cfg.per_codebook_size,
+            'offset': cfg.OFFSET[MIMI]
+        }
+
         self.sampling_params = SamplingParams(
             temperature=0.4,
             top_k=100,
             stop_token_ids=self.stop_token,
             max_tokens=1024,
-            logits_processors=[utils.alternative_logits_processor]
+            logits_processors=[partial(utils.alternative_logits_processor, **logits_processor_kwargs)]
         )
 
     def preprocess_text(self, text: str) -> List[str]:

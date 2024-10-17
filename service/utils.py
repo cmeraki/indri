@@ -3,33 +3,8 @@ import torch
 import numpy as np
 from typing import Tuple
 
-from transformers import MimiModel, AutoFeatureExtractor
-from transformers import LogitsProcessor
-
 from .logger import get_logger
-
 logger = get_logger(__name__)
-
-DEVICE = 'cuda:0'
-
-class AlternatingCodebooksLogitsProcessor(LogitsProcessor):
-    def __init__(self, input_start_len: int, codebook_size: int, num_codebooks: int, offset: int, stop_token: int):
-        self.input_start_len = input_start_len
-        self.codebook_size = codebook_size
-        self.num_codebooks = num_codebooks
-        self.offset = offset
-        self.stop_token = stop_token
-    
-    def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor) -> torch.FloatTensor:
-        curr_len = input_ids.shape[-1]
-        codebook_idx = ((curr_len - self.input_start_len) % self.num_codebooks)
-        
-        scores_processed = scores.clone()
-        scores_processed[:, : self.offset + codebook_idx * self.codebook_size] = -float("inf")
-        scores_processed[:, self.offset + (codebook_idx+1) * self.codebook_size :] = -float("inf")
-        scores_processed[:, self.stop_token] = scores[:, self.stop_token]
-        return scores_processed
-
 
 def normalize_text(text):
     text = text.lower()
@@ -72,9 +47,9 @@ def split_and_join_sentences(text):
     return [s for s in sentences if s]
 
 
-def alternative_logits_processor(past_token_ids: Tuple[int], logits: torch.Tensor) -> torch.Tensor:
+def alternative_logits_processor(past_token_ids: Tuple, logits: torch.Tensor, **kwargs) -> torch.Tensor:
     """
-    Logit processor for alternating codebooks
+    Logits processor for alternating codebooks
     Given a sequence of logits, we want to make sure that the alternating tokens
     are chosen from different codebooks.
 
@@ -85,23 +60,43 @@ def alternative_logits_processor(past_token_ids: Tuple[int], logits: torch.Tenso
     Returns:
         torch.Tensor - Processed logits. Shape (vocab_size)
     """
-    kwargs = {
-        'num_codebooks': 4,
-        'codebook_size': 2048,
-        'offset': cfg.OFFSET[MIMI],
-    }
+    num_codebooks = kwargs.get('n_codebooks', 4)
+    codebook_size = kwargs.get('per_codebook_size', 2048)
+    offset = kwargs.get('offset', 50257)
 
     new_logits = logits.clone()
-    codebook_indices = len(past_token_ids) % kwargs['num_codebooks']
+    codebook_indices = len(past_token_ids) % num_codebooks
 
     logger.info(f'Logits shape: {logits.shape}, past_token_ids: {len(past_token_ids)}, codebook indices: {codebook_indices}')
 
     mask = torch.zeros_like(new_logits)
-    start_idx = kwargs['offset'] + codebook_indices * kwargs['codebook_size']
-    end_idx = kwargs['offset'] + (codebook_indices + 1) * kwargs['codebook_size']
+    start_idx = offset + codebook_indices * codebook_size
+    end_idx = offset + (codebook_indices + 1) * codebook_size
+
     logger.info(f'Start idx: {start_idx}, end idx: {end_idx}')
 
     mask[start_idx:end_idx] = 1
     new_logits = new_logits * mask
 
     return new_logits
+
+if __name__ == '__main__':
+    print(
+        alternative_logits_processor(
+            (1, 2, 3, 4),
+            torch.rand(100),
+            n_codebooks=4,
+            per_codebook_size=20,
+            offset=10
+        )
+    )
+
+    print(
+        alternative_logits_processor(
+            (),
+            torch.rand(100),
+            n_codebooks=4,
+            per_codebook_size=20,
+            offset=10
+        )
+    )
