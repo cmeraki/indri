@@ -4,7 +4,8 @@ import base64
 import requests
 import gradio as gr
 import numpy as np
-from omni.logger import get_logger
+
+from .logger import get_logger
 
 logger = get_logger(__name__)
 

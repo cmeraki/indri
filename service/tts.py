@@ -9,9 +9,10 @@ from typing import List, Tuple
 
 from commons import CTX, TEXT, MIMI, CONVERT
 from commons import Config as cfg
-from omni.logger import get_logger
 from omni.train_with_mimi import get_text_tokenizer
+
 import service.utils as utils
+from .logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -19,45 +20,6 @@ logger = get_logger(__name__)
 # TODO: Try out Async engine for streaming audio
 # TODO: fp8 quantization for inference
 # TODO: vLLM server for best performance
-
-
-def alternative_logits_processor(past_token_ids: Tuple[int], logits: torch.Tensor) -> torch.Tensor:
-    """
-    Logit processor for alternating codebooks
-    Given a sequence of logits, we want to make sure that the alternating tokens
-    are chosen from different codebooks.
-
-    Args:
-        past_token_ids: Tuple[int] - Tuple of past token ids
-        logits: torch.Tensor - Logits to process. Shape (vocab_size)
-
-    Returns:
-        torch.Tensor - Processed logits. Shape (vocab_size)
-    """
-
-    return logits
-
-    kwargs = {
-        'num_codebooks': 4,
-        'codebook_size': 2048,
-        'offset': cfg.OFFSET[MIMI],
-    }
-
-    new_logits = logits.clone()
-    codebook_indices = len(past_token_ids) % kwargs['num_codebooks']
-
-    logger.info(f'Logits shape: {logits.shape}, past_token_ids: {len(past_token_ids)}, codebook indices: {codebook_indices}')
-
-    mask = torch.zeros_like(new_logits)
-    start_idx = kwargs['offset'] + codebook_indices * kwargs['codebook_size']
-    end_idx = kwargs['offset'] + (codebook_indices + 1) * kwargs['codebook_size']
-    logger.info(f'Start idx: {start_idx}, end idx: {end_idx}')
-
-    mask[start_idx:end_idx] = 1
-    new_logits = new_logits * mask
-
-    return new_logits
-
 
 class TTS:
     def __init__(self, model_path, device):
@@ -83,7 +45,7 @@ class TTS:
             top_k=100,
             stop_token_ids=self.stop_token,
             max_tokens=1024,
-            logits_processors=[alternative_logits_processor]
+            logits_processors=[utils.alternative_logits_processor]
         )
 
     def preprocess_text(self, text: str) -> List[str]:

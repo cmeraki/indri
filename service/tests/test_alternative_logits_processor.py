@@ -1,26 +1,27 @@
 import pytest
 import torch
-from ..tts import alternative_logits_processor, cfg, MIMI
+
+from ..utils import alternative_logits_processor
 
 @pytest.fixture
 def mock_cfg():
     class MockCfg:
-        OFFSET = {MIMI: 1000}
+        OFFSET = {'mimi': 1000}
     return MockCfg()
 
 @pytest.fixture
 def mock_logger(mocker):
-    return mocker.patch('your_module.logger')
+    return mocker.patch('service.tts.logger')
 
 def test_alternative_logits_processor_shape(mock_cfg, mock_logger, monkeypatch):
-    monkeypatch.setattr('your_module.cfg', mock_cfg)
-    
+    monkeypatch.setattr('service.tts.cfg', mock_cfg)
+
     vocab_size = 10000
     past_token_ids = (1, 2, 3)
     logits = torch.rand(vocab_size)
-    
+
     result = alternative_logits_processor(past_token_ids, logits)
-    
+
     assert result.shape == logits.shape
     mock_logger.info.assert_any_call(f'Logits shape: {logits.shape}, past_token_ids: {len(past_token_ids)}')
     mock_logger.info.assert_any_call('Codebook indices: 3')
@@ -33,7 +34,7 @@ def test_alternative_logits_processor_shape(mock_cfg, mock_logger, monkeypatch):
     ((1, 2, 3, 4), 0),
 ])
 def test_alternative_logits_processor_codebook_selection(mock_cfg, mock_logger, monkeypatch, past_token_ids, expected_codebook):
-    monkeypatch.setattr('your_module.cfg', mock_cfg)
+    monkeypatch.setattr('service.tts.cfg', mock_cfg)
     
     vocab_size = 10000
     logits = torch.rand(vocab_size)
@@ -50,21 +51,21 @@ def test_alternative_logits_processor_codebook_selection(mock_cfg, mock_logger, 
             assert torch.all(result[start:end] == 0)
 
 def test_alternative_logits_processor_mask(mock_cfg, mock_logger, monkeypatch):
-    monkeypatch.setattr('your_module.cfg', mock_cfg)
+    monkeypatch.setattr('service.tts.cfg', mock_cfg)
     
     vocab_size = 10000
     past_token_ids = (1, 2)
     logits = torch.ones(vocab_size)
-    
+
     result = alternative_logits_processor(past_token_ids, logits)
-    
+
     # Check if the mask is correctly applied
     assert torch.all(result[:mock_cfg.OFFSET[MIMI]] == 0)
     assert torch.all(result[mock_cfg.OFFSET[MIMI] + 4 * 2048:] == 0)
     assert torch.all(result[mock_cfg.OFFSET[MIMI] + 2 * 2048:mock_cfg.OFFSET[MIMI] + 3 * 2048] == 1)
 
 def test_alternative_logits_processor_preservation(mock_cfg, mock_logger, monkeypatch):
-    monkeypatch.setattr('your_module.cfg', mock_cfg)
+    monkeypatch.setattr('service.tts.cfg', mock_cfg)
     
     vocab_size = 10000
     past_token_ids = (1,)
@@ -79,4 +80,8 @@ def test_alternative_logits_processor_preservation(mock_cfg, mock_logger, monkey
     assert torch.all(result[start:end] == original_logits[start:end])
 
 if __name__ == "__main__":
+    """
+    Run the tests:
+    pytest -v test_alternative_logits_processor.py
+    """
     pytest.main()

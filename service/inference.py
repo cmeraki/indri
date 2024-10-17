@@ -7,8 +7,8 @@ from pydantic import BaseModel
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from omni.logger import get_logger
-from service.tts import TTS
+from .tts import TTS
+from .logger import get_logger
 
 logger = get_logger(__name__)
 
