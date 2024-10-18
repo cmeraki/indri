@@ -1,14 +1,14 @@
 import sys
 sys.path.append('omni/')
 
+import time
 import base64
 from enum import Enum
-from typing import Tuple, List, Optional
-from pydantic import BaseModel
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from .tts import TTS
+from .models import TTSRequest, TTSResponse, TTSSpeakersResponse, Speakers
 from .logger import get_logger
 
 logger = get_logger(__name__)
@@ -39,40 +39,31 @@ model = TTS(
     device='cuda:0'
 )
 
-class Speakers(Enum):
-    SPEAKER_1 = 'Speaker 1'
-    SPEAKER_2 = 'Speaker 2'
-    SPEAKER_3 = 'Speaker 3'
-
-class TTSRequest(BaseModel):
-    text: str
-    speaker: Optional[Speakers] = None
-
-class TTSResponse(BaseModel):
-    array: str
-    dtype: str
-    shape: Tuple
-    sample_rate: int
-
-class TTSSpeakersResponse(BaseModel):
-    speakers: List[str]
-
 @app.post("/tts", response_model=TTSResponse)
 def text_to_speech(requests: TTSRequest):
+    start_time = time.time()
     logger.info(f'Received text: {requests.text}')
 
     try:
         results = model.generate(requests.text)
+        audio = results['audio']
+        metrics = results['metrics']
     except Exception as e:
         logger.critical(f'Error in model generation: {e}')
         raise HTTPException(status_code=500, detail=str(e))
 
-    encoded = base64.b64encode(results.tobytes()).decode('utf-8')
+    end_time = time.time()
+    metrics.end_to_end_time = end_time - start_time
+
+    logger.info(f'Metrics: {metrics}')
+
+    encoded = base64.b64encode(audio.tobytes()).decode('utf-8')
     return {
         "array": encoded,
-        "dtype": str(results.dtype),
-        "shape": results.shape,
-        "sample_rate": 24000
+        "dtype": str(audio.dtype),
+        "shape": audio.shape,
+        "sample_rate": 24000,
+        "metrics": metrics
     }
 
 @app.get("/speakers", response_model=TTSSpeakersResponse)

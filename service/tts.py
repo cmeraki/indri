@@ -1,11 +1,12 @@
 import sys
 sys.path.append('omni/')
 
+import time
 import torch
 import numpy as np
 from transformers import MimiModel
 from vllm import LLM, SamplingParams
-from typing import List
+from typing import List, Dict, Any, Tuple
 from functools import partial
 
 from commons import TEXT, MIMI, CONVERT
@@ -14,7 +15,9 @@ from omni.train_with_mimi import get_text_tokenizer
 
 import service.utils as utils
 from .logger import get_logger
+from .models import TTSMetrics
 
+print(time.time())
 logger = get_logger(__name__)
 
 # DONE: Add logit processor for vLLM
@@ -76,7 +79,8 @@ class TTS:
         self,
         text: str,
         speaker='[spkr_hifi_tts_9017]'
-    ):
+    ) -> Dict[str, Any]:
+        start_time = time.time()
         batch_text = utils.sanitize_text(text)
 
         logger.debug(f'Texts after preprocessing: {batch_text}')
@@ -84,7 +88,7 @@ class TTS:
         logger.info(f'Input tokens shape: {sum([len(t) for t in input_tokens])} and batch size: {len(batch_text)}')
 
         try:
-            out = self.model.generate(
+            preds = self.model.generate(
                 prompt_token_ids=input_tokens,
                 sampling_params=self.sampling_params
             )
@@ -94,8 +98,15 @@ class TTS:
 
         mimi_tokens = []
 
-        for i, o in enumerate(out):
-            o = np.array(o.outputs[0].token_ids)
+        metrics = {
+            'time_to_first_token': [],
+            'time_to_last_token': [],
+            'input_tokens': [],
+            'decoding_tokens': []
+        }
+
+        for idx, request_output in enumerate(preds):
+            o = np.array(request_output.outputs[0].token_ids)
             end = np.where(o == self.stop_token[0])[0]
             if len(end) > 0:
                 end = end[0]
@@ -104,23 +115,50 @@ class TTS:
             o = o[:end]
             o = o - cfg.OFFSET[MIMI]
             o = utils.deserialize_tokens(o)
-            assert np.all(o >= 0), f'Negative token index generated for batch {i}'
+            assert np.all(o >= 0), f'Negative token index generated for batch {idx}'
+
+            metrics['time_to_first_token'].append(
+                request_output.metrics.first_token_time - request_output.metrics.first_scheduled_time
+            )
+            metrics['time_to_last_token'].append(
+                request_output.metrics.finished_time - request_output.metrics.first_scheduled_time
+            )
+            metrics['input_tokens'].append(len(request_output.prompt_token_ids))
+            metrics['decoding_tokens'].append(len(request_output.outputs[0].token_ids))
 
             mimi_tokens.append(o)
 
         mimi_tokens = np.concatenate(mimi_tokens, axis=1)
-
-        mimi_tokens = torch.tensor(np.expand_dims(mimi_tokens, axis=0), device=self.device)
         logger.info(f'Mimi tokens shape: {mimi_tokens.shape}')
 
+        audio, decode_time = self.decode_audio(mimi_tokens)
+
+        metrics = TTSMetrics(
+            time_to_first_token=metrics['time_to_first_token'],
+            time_to_last_token=metrics['time_to_last_token'],
+            time_to_decode_audio=decode_time,
+            input_tokens=metrics['input_tokens'],
+            decoding_tokens=metrics['decoding_tokens'],
+            generate_end_to_end_time=time.time()-start_time
+        )
+
+        return {"audio": audio, "metrics": metrics}
+
+    def decode_audio(self, audio_tokens) -> Tuple[np.ndarray, float]:
+        start_time = time.time()
+
         with torch.no_grad():
-            audio = self.audio_tokenizer.decode(mimi_tokens).audio_values
+            audio_tokens = torch.tensor(np.expand_dims(audio_tokens, axis=0), device=self.device)
+            audio = self.audio_tokenizer.decode(audio_tokens).audio_values
             audio = audio.detach().cpu().numpy()
 
-        logger.info(f'Audio shape: {audio.shape}')
+        end_time = time.time()
+        logger.info(f'Time taken to decode audio: {end_time - start_time} seconds')
 
-        return audio
+        return audio, end_time - start_time
 
 if __name__ == '__main__':
     tts = TTS('cmeraki/mimi_tts_hf', 'cuda:0')
-    audio = tts.generate('Hello, how are you?')
+    result = tts.generate('Hello, how are you?')
+
+    print(result['metrics'])
