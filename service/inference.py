@@ -23,8 +23,10 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "https://indri-ui.vercel.app",
+        "https://indrivoice.ai",
+        "https://www.indrivoice.ai",
         "https://indrivoice.io",
-        "https://indri-ui-11mlabs-11mlabs-projects.vercel.app/",
+        "https://www.indrivoice.io",
     ],
     allow_credentials=True,
     allow_methods=["*"],
