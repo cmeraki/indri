@@ -94,7 +94,7 @@ class TTS:
             )
         except Exception as e:
             logger.error(f'Error in generating tokens: {e}')
-            raise Error(f'Error in generating tokens')
+            raise RuntimeError(f'Error in generating tokens')
 
         mimi_tokens = []
 
