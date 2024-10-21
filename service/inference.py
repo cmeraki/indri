@@ -41,7 +41,7 @@ model = TTS(
 @app.post("/tts", response_model=TTSResponse)
 def text_to_speech(requests: TTSRequest):
     start_time = time.time()
-    logger.info(f'Received text: {requests.text}')
+    logger.info(f'Received text: {requests.text} with speaker: {requests.speaker}')
 
     try:
         results = model.generate(requests.text, speaker_mapping(requests.speaker))

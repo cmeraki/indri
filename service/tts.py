@@ -37,7 +37,7 @@ class TTS:
             model=model_path,
             skip_tokenizer_init=True,
             gpu_memory_utilization=0.8,
-            dtype='float16'
+            dtype='bfloat16'
         )
 
         self.convert_token = self.text_tokenizer.encode(cfg.TASK_TOKENS[CONVERT])
@@ -83,7 +83,7 @@ class TTS:
         start_time = time.time()
         batch_text = utils.sanitize_text(text)
 
-        logger.debug(f'Texts after preprocessing: {batch_text}, {speaker}')
+        logger.info(f'Texts after preprocessing: {batch_text}, {speaker}')
         input_tokens = [self.prepare_tokens(text, speaker) for text in batch_text]
         logger.info(f'Input tokens shape: {sum([len(t) for t in input_tokens])} and batch size: {len(batch_text)}')
 
