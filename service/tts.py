@@ -6,7 +6,7 @@ import torch
 import numpy as np
 from transformers import MimiModel
 from vllm import LLM, SamplingParams
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 from functools import partial
 
 from commons import TEXT, MIMI, CONVERT
@@ -78,12 +78,12 @@ class TTS:
     def generate(
         self,
         text: str,
-        speaker='[spkr_hifi_tts_9017]'
+        speaker: Optional[str] = '[spkr_hifi_tts_9017]'
     ) -> Dict[str, Any]:
         start_time = time.time()
         batch_text = utils.sanitize_text(text)
 
-        logger.debug(f'Texts after preprocessing: {batch_text}')
+        logger.debug(f'Texts after preprocessing: {batch_text}, {speaker}')
         input_tokens = [self.prepare_tokens(text, speaker) for text in batch_text]
         logger.info(f'Input tokens shape: {sum([len(t) for t in input_tokens])} and batch size: {len(batch_text)}')
 

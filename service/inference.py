@@ -3,17 +3,16 @@ sys.path.append('omni/')
 
 import time
 import base64
-from enum import Enum
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from .tts import TTS
-from .models import TTSRequest, TTSResponse, TTSSpeakersResponse, Speakers
+from .models import TTSRequest, TTSResponse, TTSSpeakersResponse, Speakers, speaker_mapping
 from .logger import get_logger
 
 logger = get_logger(__name__)
 
-# TODO: Propogate speaker to tts
+# DONE: Propogate speaker to tts
 # DONE: Exception handling
 
 app = FastAPI()
@@ -45,7 +44,7 @@ def text_to_speech(requests: TTSRequest):
     logger.info(f'Received text: {requests.text}')
 
     try:
-        results = model.generate(requests.text)
+        results = model.generate(requests.text, speaker_mapping(requests.speaker))
         audio = results['audio']
         metrics = results['metrics']
     except Exception as e:

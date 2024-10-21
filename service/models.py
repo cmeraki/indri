@@ -3,9 +3,9 @@ from pydantic import BaseModel
 from typing import List, Optional, Tuple
 
 class Speakers(Enum):
-    SPEAKER_1 = 'Speaker 1'
-    SPEAKER_2 = 'Speaker 2'
-    SPEAKER_3 = 'Speaker 3'
+    SPEAKER_1 = 'Male'
+    SPEAKER_2 = 'Female'
+    SPEAKER_3 = 'Storyteller'
 
 class TTSRequest(BaseModel):
     text: str
@@ -29,3 +29,13 @@ class TTSResponse(BaseModel):
 
 class TTSSpeakersResponse(BaseModel):
     speakers: List[str]
+
+def speaker_mapping(speaker: Speakers) -> str:
+    if speaker == Speakers.SPEAKER_1:
+        return '[spkr_hifi_tts_9017]'
+    elif speaker == Speakers.SPEAKER_2:
+        return '[spkr_hifi_tts_92]'
+    elif speaker == Speakers.SPEAKER_3:
+        return '[spkr_jenny_jenny]'
+    else:
+        raise ValueError(f'Speaker {speaker} not supported')
