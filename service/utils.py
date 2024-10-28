@@ -33,15 +33,17 @@ def sanitize_text(text: str) -> list[str]:
     text = re.sub(r'\n+', ' ', text)
     text = re.sub(r'[ \t]+', ' ', text)
 
-    allowed_pattern = r'[^a-z0-9\s,\.?\n\!]'
-    text = re.sub(allowed_pattern, '', text)
+    # allowed_pattern = r'[^a-z0-9\s,\.?\n\!]'
+    # text = re.sub(allowed_pattern, '', text)
     text = re.sub(r'([,\.?])+', r'\1', text)
 
-    pattern = r'([.!?])'
-    segments = re.split(pattern, text)
+    # pattern = r'([.!?])'
+    # segments = re.split(pattern, text)
 
-    sentences = []
-    current_sentence = ''
+    sentences = [text.strip()]
+    return sentences
+
+    # current_sentence = ''
 
     for segment in segments:
         current_sentence += segment
