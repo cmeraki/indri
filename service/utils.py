@@ -57,7 +57,14 @@ def sanitize_text(text: str) -> list[str]:
     return [s for s in sentences if s]
 
 
-def alternative_logits_processor(past_token_ids: Tuple, logits: torch.Tensor, **kwargs) -> torch.Tensor:
+def alternative_logits_processor(
+        past_token_ids: Tuple,
+        logits: torch.Tensor,
+        num_codebooks: int,
+        codebook_size: int,
+        offset: int,
+        stop_token: int
+    ) -> torch.Tensor:
     """
     Logits processor for alternating codebooks
     Given a sequence of logits, we want to make sure that the alternating tokens
@@ -70,23 +77,22 @@ def alternative_logits_processor(past_token_ids: Tuple, logits: torch.Tensor, **
     Returns:
         torch.Tensor - Processed logits. Shape (vocab_size)
     """
-    num_codebooks = kwargs.get('n_codebooks', 4)
-    codebook_size = kwargs.get('per_codebook_size', 2048)
-    offset = kwargs.get('offset', 50257)
+    logger.debug(f'Stop token: {stop_token}')
 
-    new_logits = logits.clone()
     codebook_indices = len(past_token_ids) % num_codebooks
 
-    logger.info(f'Logits shape: {logits.shape}, past_token_ids: {len(past_token_ids)}, codebook indices: {codebook_indices}')
-
-    mask = torch.zeros_like(new_logits)
     start_idx = offset + codebook_indices * codebook_size
     end_idx = offset + (codebook_indices + 1) * codebook_size
 
-    logger.info(f'Start idx: {start_idx}, end idx: {end_idx}')
+    logger.debug(f'Past_token_ids: {len(past_token_ids)}, codebook indices: {codebook_indices}, start idx: {start_idx}, end idx: {end_idx}')
 
+    mask = torch.zeros_like(logits)
     mask[start_idx:end_idx] = 1
+    mask[stop_token] = 1
+
+    new_logits = logits.clone()
     new_logits = new_logits * mask
+    new_logits[mask == 0] = -torch.inf
 
     return new_logits
 
@@ -95,9 +101,10 @@ if __name__ == '__main__':
         alternative_logits_processor(
             (1, 2, 3, 4),
             torch.rand(100),
-            n_codebooks=4,
-            per_codebook_size=20,
-            offset=10
+            num_codebooks=4,
+            codebook_size=20,
+            offset=10,
+            stop_token=-1
         )
     )
 
@@ -105,8 +112,23 @@ if __name__ == '__main__':
         alternative_logits_processor(
             (),
             torch.rand(100),
-            n_codebooks=4,
-            per_codebook_size=20,
-            offset=10
+            num_codebooks=4,
+            codebook_size=20,
+            offset=10,
+            stop_token=-1
         )
     )
+
+    sm = torch.nn.Softmax(dim=-1)
+    out = alternative_logits_processor(
+        (1, 2, 3, 4),
+        torch.rand(100),
+        num_codebooks=4,
+        codebook_size=20,
+        offset=10,
+        stop_token=-1
+    )
+    out = sm(out)
+
+    print(out)
+

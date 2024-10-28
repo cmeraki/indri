@@ -44,9 +44,10 @@ class TTS:
         self.acoustic_modality_token = self.text_tokenizer.encode(cfg.MODALITY_TOKENS[MIMI])
 
         logits_processor_kwargs = {
-            'n_codebooks': cfg.n_codebooks,
-            'per_codebook_size': cfg.per_codebook_size,
-            'offset': cfg.OFFSET[MIMI]
+            'num_codebooks': cfg.n_codebooks,
+            'codebook_size': cfg.per_codebook_size,
+            'offset': cfg.OFFSET[MIMI],
+            'stop_token': self.stop_token
         }
         logits_processors = [
             partial(utils.alternative_logits_processor, **logits_processor_kwargs)
@@ -57,7 +58,7 @@ class TTS:
             top_k=15,
             stop_token_ids=self.stop_token,
             max_tokens=1024,
-            # logits_processors=logits_processors
+            logits_processors=logits_processors
         )
 
     def prepare_tokens(self, incoming_text, speaker) -> List[int]:
@@ -157,6 +158,6 @@ class TTS:
 
 if __name__ == '__main__':
     tts = TTS('cmeraki/mimi_tts_hf', 'cuda:0')
-    result = tts.generate('Hello, how are you?')
+    result = tts.generate('Long ago, in a distant kingdom between emerald hills and sapphire lakes, magic flowed freely. A wise king ruled, ensuring peace and prosperity.')
 
     print(result['metrics'])
