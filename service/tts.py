@@ -4,20 +4,18 @@ sys.path.append('omni/')
 import time
 import torch
 import numpy as np
-from transformers import MimiModel
+from transformers import MimiModel, AutoTokenizer
 from vllm import LLM, SamplingParams
 from typing import List, Dict, Any, Tuple, Optional
 from functools import partial
 
 from commons import TEXT, MIMI, CONVERT
 from commons import Config as cfg
-from omni.train_with_mimi import get_text_tokenizer
 
 import service.utils as utils
 from .logger import get_logger
 from .models import TTSMetrics
 
-print(time.time())
 logger = get_logger(__name__)
 
 # DONE: Add logit processor for vLLM
@@ -31,7 +29,7 @@ class TTS:
         self.device = device
         self.audio_tokenizer = MimiModel.from_pretrained("kyutai/mimi").to(device=self.device)
         self.audio_tokenizer.eval()
-        self.text_tokenizer = get_text_tokenizer()
+        self.text_tokenizer = AutoTokenizer.from_pretrained(model_path)
 
         self.model = LLM(
             model=model_path,
@@ -55,8 +53,8 @@ class TTS:
         ]
 
         self.sampling_params = SamplingParams(
-            temperature=0.4,
-            top_k=100,
+            temperature=0.5,
+            top_k=15,
             stop_token_ids=self.stop_token,
             max_tokens=1024,
             # logits_processors=logits_processors

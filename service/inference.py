@@ -68,11 +68,7 @@ def text_to_speech(requests: TTSRequest):
 @app.get("/speakers", response_model=TTSSpeakersResponse)
 def available_speakers():
     return {
-        "speakers": [
-            Speakers.SPEAKER_1,
-            Speakers.SPEAKER_2,
-            Speakers.SPEAKER_3
-        ]
+        "speakers": [s for s in Speakers]
     }
 
 if __name__ == "__main__":
