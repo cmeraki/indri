@@ -2,8 +2,6 @@ import os
 import sys
 import json
 import logging
-from datetime import datetime
-from logging import FileHandler
 from logging.handlers import RotatingFileHandler
 
 class JsonFormatter(logging.Formatter):
@@ -14,7 +12,9 @@ class JsonFormatter(logging.Formatter):
             "logger": record.name,
             "filename": record.filename,
             "line_number": record.lineno,
-            "message": record.getMessage()
+            "message": record.getMessage(),
+            "thread_id": record.thread,
+            "process_id": record.process
         }
 
         if record.exc_info:
@@ -49,7 +49,7 @@ def get_logger(name: str, level: str = "INFO"):
     logger.addHandler(file_handler)
 
     console_formatter = logging.Formatter(
-        '%(asctime)s | %(levelname)-8s | %(filename)s:%(lineno)d | %(message)s',
+        '%(asctime)s | %(levelname)-8s | %(filename)s:%(lineno)d | %(thread)d | %(process)d | %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
     console_handler = logging.StreamHandler(sys.stderr)
