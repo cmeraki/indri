@@ -49,7 +49,7 @@ def get_logger(name: str, level: str = "INFO"):
     logger.addHandler(file_handler)
 
     console_formatter = logging.Formatter(
-        '%(asctime)s | %(levelname)-8s | %(filename)s:%(lineno)d | %(thread)d | %(process)d | %(message)s',
+        '%(asctime)s | %(levelname)-8s | %(filename)s:%(lineno)d | %(thread)d | %(process)d | %(message)s | %(custom_field)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
     console_handler = logging.StreamHandler(sys.stderr)

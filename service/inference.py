@@ -4,12 +4,15 @@ sys.path.append('omni/')
 import time
 import base64
 import uuid
+import traceback
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from .tts import TTS
 from .models import TTSRequest, TTSResponse, TTSSpeakersResponse, Speakers, speaker_mapping
 from .logger import get_logger
+from .launcher import _add_shutdown_handlers
 
 logger = get_logger(__name__)
 
@@ -36,19 +39,23 @@ model = TTS(
     device='cuda:0'
 )
 
+@app.get("/health")
+async def health() -> Response:
+    return Response(status_code=200)
+
 @app.post("/tts", response_model=TTSResponse)
-def text_to_speech(requests: TTSRequest):
+async def text_to_speech(requests: TTSRequest):
     request_id = str(uuid.uuid4())
 
     start_time = time.time()
     logger.info(f'Received text: {requests.text} with speaker: {requests.speaker}', extra={'request_id': request_id})
 
     try:
-        results = model.generate(requests.text, speaker_mapping(requests.speaker))
+        results = await model.generate_async(requests.text, speaker_mapping(requests.speaker), request_id=request_id)
         audio = results['audio']
         metrics = results['metrics']
     except Exception as e:
-        logger.critical(f'Error in model generation: {e}', extra={'request_id': request_id})
+        logger.critical(f"Error in model generation: {e}\nStacktrace: {''.join(traceback.format_tb(e.__traceback__))}", extra={'request_id': request_id})
         raise HTTPException(status_code=500, detail=str(e))
 
     end_time = time.time()
@@ -66,11 +73,24 @@ def text_to_speech(requests: TTSRequest):
     }
 
 @app.get("/speakers", response_model=TTSSpeakersResponse)
-def available_speakers():
+async def available_speakers():
     return {
         "speakers": [s for s in Speakers]
     }
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    import argparse
+
+    args = argparse.ArgumentParser()
+
+    args.add_argument('--port', type=int, default=8000)
+    args.add_argument('--reload', action='store_true', default=False)
+    args = args.parse_args()
+
+    logger.info(f'Starting server on port {args.port} with reload: {args.reload}')
+
+    server = uvicorn.Server(config=uvicorn.Config(app, host="0.0.0.0", port=args.port, reload=args.reload))
+    _add_shutdown_handlers(app, server)
+
+    server.run()
