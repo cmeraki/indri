@@ -1,119 +1,216 @@
-import requests
-import json
-import base64
-import numpy as np
 import os
-from datetime import datetime
-import pandas as pd
-from concurrent.futures import ThreadPoolExecutor
 import time
-from typing import List, Dict
+import json
 import torch
+import asyncio
+import aiohttp
+import base64
+import random
+import numpy as np
+import pandas as pd
 import torchaudio
+from datetime import datetime, timedelta
+
+from typing import List, Dict, Optional
+from dataclasses import dataclass
+
+from ..models import TTSResponse
+from ..logger import get_logger
+
+logger = get_logger(__name__)
+
+@dataclass
+class RequestResult:
+    request_id: int
+    text: str
+    start_time: float
+    end_time: float
+    response_time: float
+    status: int
+    error: Optional[str] = None
+    audio_path: Optional[str] = None
+    metrics: Optional[Dict] = None
+    timestamp: Optional[datetime] = None
 
 class TTSLoadTester:
-    def __init__(self, base_url: str = "http://localhost:8000"):
+    def __init__(
+        self,
+        base_url: str = "http://localhost:8000",
+        test_duration_minutes: int = 60,
+        min_qps: float = 0.5,
+        max_qps: float = 5.0,
+        qps_step: float = 0.5,
+        step_duration_minutes: int = 5
+    ):
         self.base_url = base_url
-        self.test_texts = [
-            "The quick brown fox jumps over the lazy dog near the riverbank on a sunny afternoon while birds chirp in the distance.",
-            "In a bustling city, people hurry along the sidewalks, dodging street vendors and tourists as they make their way to work.",
-            "Deep in the ancient forest, towering trees sway gently in the breeze, their leaves creating patterns of light and shadow on the forest floor.",
-            "The old lighthouse stands sentinel on the rocky coast, its beam cutting through the thick fog that rolls in from the sea each evening.",
-            "Scientists working in the modern laboratory carefully analyze their data, hoping to make a breakthrough in their groundbreaking research project."
-        ]
-        
-        # Create output directories
-        self.output_dir = f"debug/load_test_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        self.test_duration = timedelta(minutes=test_duration_minutes)
+        self.min_qps = min_qps
+        self.max_qps = max_qps
+        self.qps_step = qps_step
+        self.step_duration = timedelta(minutes=step_duration_minutes)
+
+        with open('service/tests/test_data.txt', 'r', encoding='utf-8') as f:
+            self.test_texts = [line.strip() for line in f if line.strip()]
+
+        logger.info(f"Loaded {len(self.test_texts)} test texts")
+
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        self.output_dir = f"debug/load_test_results_{timestamp}"
         os.makedirs(self.output_dir, exist_ok=True)
+
         self.audio_dir = os.path.join(self.output_dir, "audio")
         os.makedirs(self.audio_dir, exist_ok=True)
-        
-        self.results: List[Dict] = []
 
-    def make_request(self, request_id: int):
-        time.sleep(0.5)
+        self.results: List[RequestResult] = []
+        self.current_qps = min_qps
 
-        text = self.test_texts[request_id % len(self.test_texts)]
+    async def make_request(self, session: aiohttp.ClientSession):
+        text = random.choice(self.test_texts)
+
         start_time = time.time()
-        
+        timestamp = datetime.now()
+
         try:
-            response = requests.post(
+            async with session.post(
                 f"{self.base_url}/tts",
                 json={"text": text, "speaker": "[spkr_jenny_jenny]"},
                 headers={"Content-Type": "application/json"}
-            )
-            end_time = time.time()
-            
-            if response.status_code == 200:
-                response_json = response.json()
+            ) as response:
+                end_time = time.time()
+                response_time = end_time - start_time
                 
-                # Decode and save audio
-                audio_data = base64.b64decode(response_json["array"])
-                audio_array = np.frombuffer(audio_data, dtype=np.float32)
-                audio_array = torch.from_numpy(audio_array)
-                audio_filename = f"audio_{request_id}.wav"
-                audio_path = os.path.join(self.audio_dir, audio_filename)
-                
-                result = {
-                    "request_id": request_id,
-                    "text": text,
-                    "audio_path": audio_path,
-                    "audio_array": audio_array,
-                    "response_time": end_time - start_time,
-                    "status": response.status_code,
-                    "time_to_first_token": response_json["metrics"]["time_to_first_token"],
-                    "time_to_last_token": response_json["metrics"]["time_to_last_token"],
-                    "generate_end_to_end_time": response_json["metrics"]["generate_end_to_end_time"]
-                }
-                print(f"Request {request_id} completed in {result['response_time']:.2f}s")
-                
-            else:
-                result = {
-                    "request_id": request_id,
-                    "text": text,
-                    "error": f"HTTP {response.status_code}",
-                    "status": response.status_code,
-                    "response_time": end_time - start_time
-                }
-                print(f"Request {request_id} failed with status {response.status_code}")
-                
-            self.results.append(result)
-            
+                if response.status == 200:
+                    response_data = await response.json()
+                    response_obj = TTSResponse(**response_data)
+
+                    request_id = response_obj.request_id
+
+                    audio_data = base64.b64decode(response_obj.array)
+                    audio_array = np.frombuffer(audio_data, dtype=np.float32)
+                    audio_array = torch.from_numpy(audio_array.copy())
+                    audio_filename = f"{request_id}.wav"
+                    audio_path = os.path.join(self.audio_dir, audio_filename)
+
+                    await asyncio.to_thread(
+                        torchaudio.save,
+                        audio_path,
+                        audio_array.unsqueeze(0),
+                        sample_rate=response_obj.sample_rate
+                    )
+                    
+                    result = RequestResult(
+                        request_id=request_id,
+                        text=text,
+                        start_time=start_time,
+                        end_time=end_time,
+                        response_time=response_time,
+                        status=response.status,
+                        audio_path=audio_path,
+                        metrics=response_obj.metrics.model_dump() if response_obj.metrics else None,
+                        timestamp=timestamp
+                    )
+                    # logger.info(f"Request {request_id} completed in {response_time:.2f}s")
+
+                else:
+                    result = RequestResult(
+                        request_id=None,
+                        text=text,
+                        start_time=start_time,
+                        end_time=end_time,
+                        response_time=response_time,
+                        status=response.status,
+                        error=f"HTTP {response.status}",
+                        timestamp=timestamp
+                    )
+                    logger.warning(f"Request failed with status {response.status}")
+
         except Exception as e:
-            print(f"Error in request {request_id}: {str(e)}")
-            self.results.append({
-                "request_id": request_id,
-                "text": text,
-                "error": str(e),
-                "status": "failed",
-                "response_time": time.time() - start_time
-            })
+            error_time = time.time()
+            logger.error(f"Error in request {request_id}: {str(e)}")
+            result = RequestResult(
+                request_id=None,
+                text=text,
+                start_time=start_time,
+                end_time=error_time,
+                response_time=error_time - start_time,
+                status=-1,
+                error=str(e),
+                timestamp=timestamp
+            )
 
-    def run_load_test(self, num_concurrent: int = 5):
-        print(f"Starting load test with {num_concurrent} concurrent requests...")
+        self.results.append(result)
 
-        with ThreadPoolExecutor(max_workers=num_concurrent) as executor:
-            executor.map(self.make_request, range(num_concurrent))
+    async def request_generator(self):
+        start_time = datetime.now()
+        last_qps_change = start_time
+        current_qps = self.min_qps
+
+        async with aiohttp.ClientSession() as session:
+            while datetime.now() - start_time < self.test_duration:
+                current_time = datetime.now()
+                
+                # Update QPS if step duration has elapsed
+                if current_time - last_qps_change >= self.step_duration:
+                    current_qps = min(current_qps + self.qps_step, self.max_qps)
+                    last_qps_change = current_time
+                    logger.info(f"Increasing QPS to {current_qps}")
+
+                # Calculate delay based on current QPS
+                delay = 1.0 / current_qps
+                asyncio.create_task(self.make_request(session))
+                await asyncio.sleep(delay)
+
+    async def run_load_test(self):
+        logger.info(f"Starting load test for {self.test_duration.total_seconds() / 60:.1f} minutes")
+        logger.info(f"QPS will increase from {self.min_qps} to {self.max_qps} " 
+                    f"every {self.step_duration.total_seconds() / 60:.1f} minutes")
+
+        await self.request_generator()
 
         self.save_results()
-        # self.analyze_results()
+        self.analyze_results()
 
     def save_results(self):
-        # Save test texts
-        with open(os.path.join(self.output_dir, "test_texts.json"), "w") as f:
-            json.dump(self.test_texts, f, indent=2)
-
-        for r in self.results:
-            torchaudio.save(r["audio_path"], r["audio_array"].unsqueeze(0), sample_rate=24000)
-
-        # Save results as CSV
-        df = pd.DataFrame(self.results)
-        df.to_csv(os.path.join(self.output_dir, "results.csv"), index=False)
+        # Save test configuration
+        config = {
+            "base_url": self.base_url,
+            "test_duration_minutes": self.test_duration.total_seconds() / 60,
+            "min_qps": self.min_qps,
+            "max_qps": self.max_qps,
+            "qps_step": self.qps_step,
+            "step_duration_minutes": self.step_duration.total_seconds() / 60,
+            "test_texts": self.test_texts
+        }
         
-        print(f"\nResults saved to {self.output_dir}/")
+        with open(os.path.join(self.output_dir, "config.json"), "w") as f:
+            json.dump(config, f, indent=2)
+
+        df = pd.DataFrame([vars(r) for r in self.results])
+
+        if not df.empty:
+            df['relative_time'] = (df['timestamp'] - df['timestamp'].min()).dt.total_seconds()
+
+        df.to_csv(os.path.join(self.output_dir, "detailed_results.csv"), index=False)
+
+        def q95(x):
+            return x.quantile(0.95)
+
+        time_series = df.set_index('timestamp').resample('1s').agg({
+            'request_id': 'count',
+            'response_time': ['mean', 'min', 'max', 'std', q95],
+            'status': lambda x: (x == 200).mean() * 100  # success rate
+        }).reset_index()
+
+        time_series.columns = ['timestamp', 'requests_per_s', 'avg_response_time',
+                             'min_response_time', 'max_response_time',
+                             'std_response_time', 'p95_response_time', 'success_rate']
+
+        time_series.to_csv(os.path.join(self.output_dir, "time_series_metrics.csv"), index=False)
+
+        logger.info(f"Results saved to {self.output_dir}/")
 
     def analyze_results(self):
-        df = pd.DataFrame(self.results)
+        df = pd.DataFrame([vars(r) for r in self.results])
         successful_requests = df[df['status'] == 200]
         
         print("\nTest Results Summary:")
@@ -129,16 +226,35 @@ class TTSLoadTester:
             print(f"Max: {successful_requests['response_time'].max():.2f}")
             print(f"Median: {successful_requests['response_time'].median():.2f}")
             
-            print(f"\nGeneration Time Statistics (seconds):")
-            print(f"Average time to first token: {successful_requests['time_to_first_token'].mean():.2f}")
-            print(f"Average time to last token: {successful_requests['time_to_last_token'].mean():.2f}")
-            print(f"Average end-to-end time: {successful_requests['generate_end_to_end_time'].mean():.2f}")
+            if 'metrics' in successful_requests.columns:
+                metrics_df = pd.DataFrame(list(successful_requests['metrics'].dropna()))
+                if not metrics_df.empty:
+                    print(f"\nGeneration Time Statistics (seconds):")
+                    print(f"Average time to first token: {metrics_df['time_to_first_token'].apply(lambda x: x[0]).mean():.2f}")
+                    print(f"Average time to last token: {metrics_df['time_to_last_token'].apply(lambda x: x[0]).mean():.2f}")
+                    print(f"Average end-to-end time: {metrics_df['generate_end_to_end_time'].mean():.2f}")
 
 if __name__ == "__main__":
     from argparse import ArgumentParser
+    
     parser = ArgumentParser()
-    parser.add_argument("--n", type=int, default=1)
+    parser.add_argument("--duration", type=int, default=60, help="Test duration in minutes")
+    parser.add_argument("--min-qps", type=float, default=0.5, help="Starting queries per second")
+    parser.add_argument("--max-qps", type=float, default=5.0, help="Maximum queries per second")
+    parser.add_argument("--qps-step", type=float, default=0.5, help="QPS increase step")
+    parser.add_argument("--url", type=str, default="http://localhost:8000", help="Base URL fo[r the TTS service")
+
     args = parser.parse_args()
 
-    tester = TTSLoadTester()
-    tester.run_load_test(num_concurrent=args.n)  # Adjust number of concurrent requests here
+    step_duration = args.duration / (args.max_qps / args.qps_step)
+
+    tester = TTSLoadTester(
+        base_url=args.url,
+        test_duration_minutes=args.duration,
+        min_qps=args.min_qps,
+        max_qps=args.max_qps,
+        qps_step=args.qps_step,
+        step_duration_minutes=step_duration
+    )
+
+    asyncio.run(tester.run_load_test())

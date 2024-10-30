@@ -56,7 +56,7 @@ async def text_to_speech(requests: TTSRequest):
         metrics = results['metrics']
     except Exception as e:
         logger.critical(f"Error in model generation: {e}\nStacktrace: {''.join(traceback.format_tb(e.__traceback__))}", extra={'request_id': request_id})
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(request_id) + ' ' + str(e))
 
     end_time = time.time()
     metrics.end_to_end_time = end_time - start_time
@@ -69,7 +69,8 @@ async def text_to_speech(requests: TTSRequest):
         "dtype": str(audio.dtype),
         "shape": audio.shape,
         "sample_rate": 24000,
-        "metrics": metrics
+        "metrics": metrics,
+        "request_id": request_id
     }
 
 @app.get("/speakers", response_model=TTSSpeakersResponse)
