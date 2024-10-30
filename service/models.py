@@ -48,6 +48,7 @@ class TTSResponse(BaseModel):
     shape: Tuple
     sample_rate: int
     metrics: Optional[TTSMetrics] = None
+    request_id: Optional[str] = None
 
 class TTSSpeakersResponse(BaseModel):
     speakers: List[str]

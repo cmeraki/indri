@@ -5,9 +5,12 @@ import time
 import torch
 import numpy as np
 from transformers import MimiModel, AutoTokenizer
-from vllm import LLM, SamplingParams
 from typing import List, Dict, Any, Tuple, Optional
 from functools import partial
+
+from vllm import SamplingParams, AsyncEngineArgs
+from vllm.engine.async_llm_engine import AsyncLLMEngine
+from vllm.inputs import TokensPrompt
 
 from commons import TEXT, MIMI, CONVERT
 from commons import Config as cfg
@@ -31,12 +34,13 @@ class TTS:
         self.audio_tokenizer.eval()
         self.text_tokenizer = AutoTokenizer.from_pretrained(model_path)
 
-        self.model = LLM(
+        self.engine_args = AsyncEngineArgs(
             model=model_path,
             skip_tokenizer_init=True,
             gpu_memory_utilization=0.8,
             dtype='bfloat16'
         )
+        self.engine = AsyncLLMEngine.from_engine_args(self.engine_args)
 
         self.convert_token = self.text_tokenizer.encode(cfg.TASK_TOKENS[CONVERT])
         self.stop_token = self.text_tokenizer.encode(cfg.STOP_TOKEN)
@@ -74,26 +78,32 @@ class TTS:
 
         return input_tokens.tolist()
 
-    def generate(
-        self,
+    async def generate_async(self,
         text: str,
-        speaker: Optional[str] = '[spkr_hifi_tts_9017]'
+        speaker: Optional[str] = '[spkr_hifi_tts_9017]',
+        request_id: Optional[str] = None
     ) -> Dict[str, Any]:
+
         start_time = time.time()
         batch_text = utils.sanitize_text(text)
-
-        logger.info(f'Texts after preprocessing: {batch_text}, {speaker}')
         input_tokens = [self.prepare_tokens(text, speaker) for text in batch_text]
-        logger.info(f'Input tokens shape: {sum([len(t) for t in input_tokens])} and batch size: {len(batch_text)}')
 
-        try:
-            preds = self.model.generate(
-                prompt_token_ids=input_tokens,
-                sampling_params=self.sampling_params
-            )
-        except Exception as e:
-            logger.error(f'Error in generating tokens: {e}')
-            raise RuntimeError(f'Error in generating tokens')
+        logger.info(f'Texts after preprocessing: {batch_text}, {speaker}', extra={'request_id': request_id})
+        logger.info(f'Input tokens shape: {len(input_tokens)} and batch size: {len(batch_text)}', extra={'request_id': request_id})
+
+        prompt = TokensPrompt(prompt_token_ids=input_tokens[0])
+
+        results_generator = self.engine.generate(
+            prompt=prompt,
+            sampling_params=self.sampling_params,
+            request_id=request_id
+        )
+
+        preds = []
+
+        async for request_output in results_generator:
+            if request_output.finished:
+                preds.append(request_output)
 
         mimi_tokens = []
 
