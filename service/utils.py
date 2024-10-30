@@ -19,7 +19,7 @@ def deserialize_tokens(tokens):
     return acoustic_tokens
 
 
-async def sanitize_text(text: str) -> list[str]:
+def sanitize_text(text: str) -> list[str]:
     """
     Sanitize text to be used for TTS
 

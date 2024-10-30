@@ -65,7 +65,7 @@ class TTS:
             logits_processors=logits_processors
         )
 
-    async def prepare_tokens(self, incoming_text, speaker) -> List[int]:
+    def prepare_tokens(self, incoming_text, speaker) -> List[int]:
         incoming_tokens = self.text_tokenizer.encode(incoming_text)
 
         input_tokens = np.hstack([
@@ -85,8 +85,8 @@ class TTS:
     ) -> Dict[str, Any]:
 
         start_time = time.time()
-        batch_text = await utils.sanitize_text(text)
-        input_tokens = [await self.prepare_tokens(text, speaker) for text in batch_text]
+        batch_text = utils.sanitize_text(text)
+        input_tokens = [self.prepare_tokens(text, speaker) for text in batch_text]
 
         logger.info(f'Texts after preprocessing: {batch_text}, {speaker}', extra={'request_id': request_id})
         logger.info(f'Input tokens shape: {len(input_tokens)} and batch size: {len(batch_text)}', extra={'request_id': request_id})
