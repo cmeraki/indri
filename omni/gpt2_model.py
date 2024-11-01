@@ -283,7 +283,7 @@ class GPT(nn.Module):
         old_vocab_size = self.config.vocab_size
 
         old_embeddings = self.transformer.wte.weight
-        new_embeddings = torch.Tensor(new_vocab_size, self.config.n_embd)
+        new_embeddings = torch.Tensor(new_vocab_size, self.config.n_embd).to(old_embeddings.device.type)
 
         # https://nlp.stanford.edu/~johnhew/vocab-expansion.html
 
