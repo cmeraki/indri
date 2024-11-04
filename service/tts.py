@@ -8,7 +8,7 @@ from transformers import MimiModel, AutoTokenizer
 from typing import List, Dict, Any, Tuple, Optional
 from functools import partial
 
-from vllm import SamplingParams, AsyncEngineArgs
+from vllm import SamplingParams, AsyncEngineArgs, RequestOutput
 from vllm.engine.async_llm_engine import AsyncLLMEngine
 from vllm.inputs import TokensPrompt
 
@@ -66,8 +66,20 @@ class TTS:
             logits_processors=logits_processors
         )
 
-    def prepare_tokens(self, incoming_text, speaker) -> List[int]:
+    def prepare_tokens(self, incoming_text, speaker, prompt_tokens: dict = None) -> List[int]:
         incoming_tokens = self.text_tokenizer.encode(incoming_text)
+
+        if prompt_tokens:
+            input_tokens = np.hstack([
+                self.text_modality_token,
+                prompt_tokens[TEXT],
+                incoming_tokens,
+                self.convert_token,
+                self.acoustic_modality_token,
+                self.text_tokenizer.encode(speaker),
+                prompt_tokens[MIMI],
+            ])
+            return input_tokens.tolist()
 
         input_tokens = np.hstack([
             self.text_modality_token,
@@ -79,34 +91,8 @@ class TTS:
 
         return input_tokens.tolist()
 
-    async def generate_async(self,
-        text: str,
-        speaker: Optional[str] = '[spkr_hifi_tts_9017]',
-        request_id: Optional[str] = None
-    ) -> Dict[str, Any]:
-
-        start_time = time.time()
-        batch_text = sanitize_text(text)
-        input_tokens = [self.prepare_tokens(text, speaker) for text in batch_text]
-
-        logger.info(f'Texts after preprocessing: {batch_text}, {speaker}', extra={'request_id': request_id})
-        logger.info(f'Input tokens shape: {len(input_tokens)} and batch size: {len(batch_text)}', extra={'request_id': request_id})
-
-        prompt = TokensPrompt(prompt_token_ids=input_tokens[0])
-
-        results_generator = self.engine.generate(
-            prompt=prompt,
-            sampling_params=self.sampling_params,
-            request_id=request_id
-        )
-
-        preds = []
-
-        async for request_output in results_generator:
-            if request_output.finished:
-                preds.append(request_output)
-
-        mimi_tokens = []
+    def get_generation_output(self, output: List[RequestOutput]) -> Tuple[np.ndarray, Dict[str, Any]]:
+        output_tokens = []
 
         metrics = {
             'time_to_first_token': [],
@@ -115,16 +101,19 @@ class TTS:
             'decoding_tokens': []
         }
 
-        for idx, request_output in enumerate(preds):
+        for idx, request_output in enumerate(output):
             o = np.array(request_output.outputs[0].token_ids)
             end = np.where(o == self.stop_token[0])[0]
+
             if len(end) > 0:
                 end = end[0]
             else:
                 end = len(o)
+
             o = o[:end]
             o = o - cfg.OFFSET[MIMI]
             o = deserialize_tokens(o)
+
             assert np.all(o >= 0), f'Negative token index generated for batch {idx}'
 
             metrics['time_to_first_token'].append(
@@ -136,19 +125,59 @@ class TTS:
             metrics['input_tokens'].append(len(request_output.prompt_token_ids))
             metrics['decoding_tokens'].append(len(request_output.outputs[0].token_ids))
 
-            mimi_tokens.append(o)
+            output_tokens.append(o)
 
-        mimi_tokens = np.concatenate(mimi_tokens, axis=1)
-        logger.info(f'Mimi tokens shape: {mimi_tokens.shape}')
+        output_tokens = np.concatenate(output_tokens, axis=1)
+        return output_tokens, metrics
+
+    async def generate_async(self,
+        text: str,
+        speaker: Optional[str] = '[spkr_hifi_tts_9017]',
+        request_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+
+        start_time = time.time()
+        batch_text = sanitize_text(text)
+        prompt_tokens = {}
+        overall_metrics = []
+        mimi_tokens = []
+
+        logger.info(f'Texts after preprocessing: {batch_text}, {speaker}', extra={'request_id': request_id})
+
+        for text in batch_text:
+            input_tokens = self.prepare_tokens(text, speaker, prompt_tokens)
+            logger.info(f'Input tokens shape: {len(input_tokens)}', extra={'request_id': request_id})
+            prompt = TokensPrompt(prompt_token_ids=input_tokens)
+
+            results_generator = self.engine.generate(
+                prompt=prompt,
+                sampling_params=self.sampling_params,
+                request_id=request_id
+            )
+
+            async for request_output in results_generator:
+                if request_output.finished:
+                    output = request_output
+
+            output_tokens, generation_metrics = self.get_generation_output(output=output)
+            logger.info(f'Output tokens shape: {output_tokens.shape}', extra={'request_id': request_id})
+
+            overall_metrics.append(generation_metrics)
+            mimi_tokens.append(output_tokens)
+
+            prompt_tokens = {
+                TEXT: input_tokens,
+                MIMI: output_tokens
+            }
 
         audio, decode_time = self.decode_audio(mimi_tokens)
 
         metrics = TTSMetrics(
-            time_to_first_token=metrics['time_to_first_token'],
-            time_to_last_token=metrics['time_to_last_token'],
+            time_to_first_token=overall_metrics[0]['time_to_first_token'],
+            time_to_last_token=sum([x['time_to_last_token'] for x in overall_metrics]),
             time_to_decode_audio=decode_time,
-            input_tokens=metrics['input_tokens'],
-            decoding_tokens=metrics['decoding_tokens'],
+            input_tokens=[x['input_tokens'] for x in overall_metrics],
+            decoding_tokens=[x['decoding_tokens'] for x in overall_metrics],
             generate_end_to_end_time=time.time()-start_time
         )
 
