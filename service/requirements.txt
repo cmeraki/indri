@@ -1,0 +1,8 @@
+torch
+torchaudio
+transformers
+pydantic
+vllm
+fastapi
+pydantic
+numpy

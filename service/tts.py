@@ -15,17 +15,18 @@ from vllm.inputs import TokensPrompt
 from commons import TEXT, MIMI, CONVERT
 from commons import Config as cfg
 
-import service.utils as utils
+from .utils import (
+    alternative_logits_processor,
+    sanitize_text,
+    deserialize_tokens
+)
 from .logger import get_logger
 from .models import TTSMetrics
 
 logger = get_logger(__name__)
 
-# DONE: Add logit processor for vLLM
-# TODO: Try out Async engine for streaming audio
+# TODO: Stream audio
 # TODO: fp8 quantization for inference
-# TODO: vLLM server for best performance
-# DONE: Expose error messages - Decoding errors or model errors
 
 class TTS:
     def __init__(self, model_path, device):
@@ -54,7 +55,7 @@ class TTS:
             'stop_token': self.stop_token
         }
         logits_processors = [
-            partial(utils.alternative_logits_processor, **logits_processor_kwargs)
+            partial(alternative_logits_processor, **logits_processor_kwargs)
         ]
 
         self.sampling_params = SamplingParams(
@@ -85,7 +86,7 @@ class TTS:
     ) -> Dict[str, Any]:
 
         start_time = time.time()
-        batch_text = utils.sanitize_text(text)
+        batch_text = sanitize_text(text)
         input_tokens = [self.prepare_tokens(text, speaker) for text in batch_text]
 
         logger.info(f'Texts after preprocessing: {batch_text}, {speaker}', extra={'request_id': request_id})
@@ -123,7 +124,7 @@ class TTS:
                 end = len(o)
             o = o[:end]
             o = o - cfg.OFFSET[MIMI]
-            o = utils.deserialize_tokens(o)
+            o = deserialize_tokens(o)
             assert np.all(o >= 0), f'Negative token index generated for batch {idx}'
 
             metrics['time_to_first_token'].append(
