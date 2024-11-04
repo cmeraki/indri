@@ -34,8 +34,8 @@ class TTSRequest(BaseModel):
     speaker: Speakers
 
 class TTSMetrics(BaseModel):
-    time_to_first_token: List[float]
-    time_to_last_token: List[float]
+    time_to_first_token: float
+    time_to_last_token: float
     time_to_decode_audio: float
     input_tokens: List[int]
     decoding_tokens: List[int]
