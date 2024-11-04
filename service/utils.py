@@ -37,13 +37,11 @@ def sanitize_text(text: str) -> list[str]:
     # text = re.sub(allowed_pattern, '', text)
     text = re.sub(r'([,\.?])+', r'\1', text)
 
-    # pattern = r'([.!?])'
-    # segments = re.split(pattern, text)
+    pattern = r'([.!?])'
+    segments = re.split(pattern, text)
 
-    sentences = [text.strip()]
-    return sentences
-
-    # current_sentence = ''
+    sentences = []
+    current_sentence = ''
 
     for segment in segments:
         current_sentence += segment
@@ -77,14 +75,10 @@ def alternative_logits_processor(
     Returns:
         torch.Tensor - Processed logits. Shape (vocab_size)
     """
-    logger.debug(f'Stop token: {stop_token}')
-
     codebook_indices = len(past_token_ids) % num_codebooks
 
     start_idx = offset + codebook_indices * codebook_size
     end_idx = offset + (codebook_indices + 1) * codebook_size
-
-    logger.debug(f'Past_token_ids: {len(past_token_ids)}, codebook indices: {codebook_indices}, start idx: {start_idx}, end idx: {end_idx}')
 
     mask = torch.zeros_like(logits)
     mask[start_idx:end_idx] = 1
