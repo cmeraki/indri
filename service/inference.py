@@ -1,16 +1,14 @@
-import sys
-sys.path.append('omni/')
-
 import time
 import base64
 import uuid
 import traceback
+import numpy as np
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from .tts import TTS
-from .models import TTSRequest, TTSResponse, TTSSpeakersResponse, Speakers, speaker_mapping
+from .models import TTSRequest, TTSResponse, TTSSpeakersResponse, Speakers, TTSMetrics, speaker_mapping
 from .logger import get_logger
 from .launcher import _add_shutdown_handlers
 
@@ -33,12 +31,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-global model
-model = TTS(
-    'cmeraki/mimi_tts_hf',
-    device='cuda:0'
-)
-
 @app.get("/health")
 async def health() -> Response:
     return Response(status_code=200)
@@ -52,8 +44,8 @@ async def text_to_speech(requests: TTSRequest):
 
     try:
         results = await model.generate_async(requests.text, speaker_mapping(requests.speaker), request_id=request_id)
-        audio = results['audio']
-        metrics = results['metrics']
+        audio: np.ndarray = results['audio']
+        metrics: TTSMetrics = results['metrics']
     except Exception as e:
         logger.critical(f"Error in model generation: {e}\nStacktrace: {''.join(traceback.format_tb(e.__traceback__))}", extra={'request_id': request_id})
         raise HTTPException(status_code=500, detail=str(request_id) + ' ' + str(e))
@@ -83,15 +75,23 @@ if __name__ == "__main__":
     import uvicorn
     import argparse
 
-    args = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser()
 
-    args.add_argument('--port', type=int, default=8000)
-    args.add_argument('--reload', action='store_true', default=False)
-    args = args.parse_args()
+    parser.add_argument('--model_path', type=str, required=True, choices=['cmeraki/mimi_tts_hf', 'cmeraki/mimi_tts_hf_stage'], help='HF model repository id')
+    parser.add_argument('--device', type=str, default='cuda:0', required=False, help='Device to use for inference')
+    parser.add_argument('--port', type=int, default=8000, required=False, help='Port to run the server on')
 
-    logger.info(f'Starting server on port {args.port} with reload: {args.reload}')
+    args =  parser.parse_args()
 
-    server = uvicorn.Server(config=uvicorn.Config(app, host="0.0.0.0", port=args.port, reload=args.reload))
+    logger.info(f'Loading model from {args.model_path} on {args.device} and starting server on port {args.port}')
+
+    global model
+    model = TTS(
+        model_path=args.model_path,
+        device=args.device
+    )
+
+    server = uvicorn.Server(config=uvicorn.Config(app, host="0.0.0.0", port=args.port))
     _add_shutdown_handlers(app, server)
 
     server.run()

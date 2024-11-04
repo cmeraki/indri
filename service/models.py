@@ -31,7 +31,7 @@ class Speakers(Enum):
 
 class TTSRequest(BaseModel):
     text: str
-    speaker: Optional[Speakers] = None
+    speaker: Speakers
 
 class TTSMetrics(BaseModel):
     time_to_first_token: List[float]
