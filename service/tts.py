@@ -2,6 +2,7 @@ import sys
 sys.path.append('omni/')
 
 import time
+import uuid
 import torch
 import numpy as np
 from transformers import MimiModel, AutoTokenizer
@@ -66,10 +67,10 @@ class TTS:
             logits_processors=logits_processors
         )
 
-    def prepare_tokens(self, incoming_text, speaker, prompt_tokens: dict = None) -> List[int]:
-        incoming_tokens = self.text_tokenizer.encode(incoming_text)
+    def prepare_tokens(self, incoming_text, speaker, prompt_tokens: dict = None) -> Tuple[List[int], List[int]]:
 
         if prompt_tokens:
+            incoming_tokens = self.text_tokenizer.encode(' ' + incoming_text)
             input_tokens = np.hstack([
                 self.text_modality_token,
                 prompt_tokens[TEXT],
@@ -77,10 +78,11 @@ class TTS:
                 self.convert_token,
                 self.acoustic_modality_token,
                 self.text_tokenizer.encode(speaker),
-                prompt_tokens[MIMI],
+                prompt_tokens[MIMI]
             ])
-            return input_tokens.tolist()
+            return incoming_tokens, input_tokens.tolist()
 
+        incoming_tokens = self.text_tokenizer.encode(incoming_text)
         input_tokens = np.hstack([
             self.text_modality_token,
             incoming_tokens,
@@ -89,46 +91,33 @@ class TTS:
             self.text_tokenizer.encode(speaker)
         ])
 
-        return input_tokens.tolist()
+        return incoming_tokens, input_tokens.tolist()
 
-    def get_generation_output(self, output: List[RequestOutput]) -> Tuple[np.ndarray, Dict[str, Any]]:
-        output_tokens = []
+    def get_generation_output(self, output: RequestOutput) -> Tuple[np.ndarray, np.ndarray, Dict[str, Any]]:
+        output_tokens = np.array(output.outputs[0].token_ids)
+        end = np.where(output_tokens == self.stop_token[0])[0]
+
+        if len(end) > 0:
+            end = end[0]
+        else:
+            end = len(output_tokens)
+
+        output_tokens = output_tokens[:end]
+
+        output_token_ids = output_tokens.copy()
+        output_tokens = output_tokens - cfg.OFFSET[MIMI]
+        output_tokens = deserialize_tokens(output_tokens)
+
+        assert np.all(output_tokens >= 0), f'Negative token index generated'
 
         metrics = {
-            'time_to_first_token': [],
-            'time_to_last_token': [],
-            'input_tokens': [],
-            'decoding_tokens': []
+            'time_to_first_token': output.metrics.first_token_time - output.metrics.first_scheduled_time,
+            'time_to_last_token': output.metrics.finished_time - output.metrics.first_scheduled_time,
+            'input_tokens': len(output.prompt_token_ids),
+            'decoding_tokens': len(output.outputs[0].token_ids)
         }
 
-        for idx, request_output in enumerate(output):
-            o = np.array(request_output.outputs[0].token_ids)
-            end = np.where(o == self.stop_token[0])[0]
-
-            if len(end) > 0:
-                end = end[0]
-            else:
-                end = len(o)
-
-            o = o[:end]
-            o = o - cfg.OFFSET[MIMI]
-            o = deserialize_tokens(o)
-
-            assert np.all(o >= 0), f'Negative token index generated for batch {idx}'
-
-            metrics['time_to_first_token'].append(
-                request_output.metrics.first_token_time - request_output.metrics.first_scheduled_time
-            )
-            metrics['time_to_last_token'].append(
-                request_output.metrics.finished_time - request_output.metrics.first_scheduled_time
-            )
-            metrics['input_tokens'].append(len(request_output.prompt_token_ids))
-            metrics['decoding_tokens'].append(len(request_output.outputs[0].token_ids))
-
-            output_tokens.append(o)
-
-        output_tokens = np.concatenate(output_tokens, axis=1)
-        return output_tokens, metrics
+        return output_token_ids, output_tokens, metrics
 
     async def generate_async(self,
         text: str,
@@ -145,31 +134,32 @@ class TTS:
         logger.info(f'Texts after preprocessing: {batch_text}, {speaker}', extra={'request_id': request_id})
 
         for text in batch_text:
-            input_tokens = self.prepare_tokens(text, speaker, prompt_tokens)
+            text_token_ids, input_tokens = self.prepare_tokens(text, speaker, prompt_tokens)
             logger.info(f'Input tokens shape: {len(input_tokens)}', extra={'request_id': request_id})
             prompt = TokensPrompt(prompt_token_ids=input_tokens)
 
             results_generator = self.engine.generate(
                 prompt=prompt,
                 sampling_params=self.sampling_params,
-                request_id=request_id
+                request_id=str(uuid.uuid4())
             )
 
             async for request_output in results_generator:
                 if request_output.finished:
                     output = request_output
 
-            output_tokens, generation_metrics = self.get_generation_output(output=output)
+            output_token_ids, output_tokens, generation_metrics = self.get_generation_output(output=output)
             logger.info(f'Output tokens shape: {output_tokens.shape}', extra={'request_id': request_id})
 
             overall_metrics.append(generation_metrics)
             mimi_tokens.append(output_tokens)
 
             prompt_tokens = {
-                TEXT: input_tokens,
-                MIMI: output_tokens
+                TEXT: text_token_ids,
+                MIMI: output_token_ids
             }
 
+        mimi_tokens = np.concatenate(mimi_tokens, axis=1)
         audio, decode_time = self.decode_audio(mimi_tokens)
 
         metrics = TTSMetrics(
@@ -196,8 +186,17 @@ class TTS:
 
         return audio, end_time - start_time
 
-if __name__ == '__main__':
-    tts = TTS('cmeraki/mimi_tts_hf', 'cuda:0')
-    result = tts.generate('Long ago, in a distant kingdom between emerald hills and sapphire lakes, magic flowed freely. A wise king ruled, ensuring peace and prosperity.')
+
+async def main():
+    model = TTS('cmeraki/mimi_tts_hf', 'cuda:0')
+    result = await model.generate_async(
+        'Long ago, in a distant kingdom between emerald hills and sapphire lakes, magic flowed freely. This is a second sentence.',
+        speaker='[spkr_hifi_tts_9017]',
+        request_id=str(uuid.uuid4())
+    )
 
     print(result['metrics'])
+
+if __name__ == '__main__':
+    import asyncio
+    asyncio.run(main())

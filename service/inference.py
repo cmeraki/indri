@@ -33,7 +33,14 @@ app.add_middleware(
 
 @app.get("/health")
 async def health() -> Response:
-    return Response(status_code=200)
+    global model
+    try:
+        await model.engine.check_health()
+    except Exception as e:
+        logger.critical(f"Error in model health check: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return Response(content="OK", status_code=200)
 
 @app.post("/tts", response_model=TTSResponse)
 async def text_to_speech(requests: TTSRequest):
