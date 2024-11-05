@@ -122,11 +122,12 @@ class TTS:
     async def generate_async(self,
         text: str,
         speaker: Optional[str] = '[spkr_hifi_tts_9017]',
-        request_id: Optional[str] = None
+        request_id: Optional[str] = None,
+        max_context_words: Optional[int] = 10
     ) -> Dict[str, Any]:
 
         start_time = time.time()
-        batch_text = sanitize_text(text)
+        batch_text = sanitize_text(text, max_context_words)
         prompt_tokens = {}
         overall_metrics = []
         mimi_tokens = []
@@ -188,11 +189,12 @@ class TTS:
 
 
 async def main():
-    model = TTS('cmeraki/mimi_tts_hf', 'cuda:0')
+    model = TTS('cmeraki/mimi_tts_hf_stage', 'cuda:0')
     result = await model.generate_async(
         'Long ago, in a distant kingdom between emerald hills and sapphire lakes, magic flowed freely. This is a second sentence.',
         speaker='[spkr_hifi_tts_9017]',
-        request_id=str(uuid.uuid4())
+        request_id=str(uuid.uuid4()),
+        max_context_words=20
     )
 
     print(result['metrics'])
