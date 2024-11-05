@@ -15,6 +15,7 @@ class Speakers(Enum):
     SPEAKER_10 = '[spkr_youtube_webds_en_mukesh]'
     SPEAKER_11 = '[spkr_youtube_webds_en_attenborough]'
     SPEAKER_12 = '[spkr_youtube_webds_hi_warikoo]'
+    SPEAKER_13 = '[spkr_youtube_webds_hi_pmmodi]'
 
 
 class TTSRequest(BaseModel):
@@ -55,6 +56,7 @@ def speaker_mapping(speaker: Speakers) -> str:
         Speakers.SPEAKER_10: '[spkr_youtube_webds_en_mukesh]',
         Speakers.SPEAKER_11: '[spkr_youtube_webds_en_attenborough]',
         Speakers.SPEAKER_12: '[spkr_youtube_webds_hi_warikoo]',
+        Speakers.SPEAKER_13: '[spkr_youtube_webds_hi_pmmodi]'
     }
 
     speaker_val = spkr_map.get(speaker)
