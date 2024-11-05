@@ -50,13 +50,13 @@ class Infer:
         self.acoustic_modality_token = self.text_tokenizer.encode(cfg.MODALITY_TOKENS[MIMI])
     
     def deserialize_tokens(self, tokens):
-            cb1 = tokens[0::4]
-            cb2 = tokens[1::4]
-            cb3 = tokens[2::4]
-            cb4 = tokens[3::4]
-            min_shape = min(cb1.shape, cb2.shape, cb3.shape, cb4.shape)[0]
-            acoustic_tokens = np.stack([cb1[:min_shape], cb2[:min_shape] - 2048, cb3[:min_shape] - 4096, cb4[:min_shape] - 6144])
-            return acoustic_tokens
+        cb1 = tokens[0::4]
+        cb2 = tokens[1::4]
+        cb3 = tokens[2::4]
+        cb4 = tokens[3::4]
+        min_shape = min(cb1.shape, cb2.shape, cb3.shape, cb4.shape)[0]
+        acoustic_tokens = np.stack([cb1[:min_shape], cb2[:min_shape] - 2048, cb3[:min_shape] - 4096, cb4[:min_shape] - 6144])
+        return acoustic_tokens
 
 
     def normalize_text(self, text):
@@ -94,8 +94,8 @@ class Infer:
                 semantic_tokens = self.omni_model.generate(
                     input_tokens,
                     max_length=1024,
-                    temperature=0.4,
-                    top_k=100,
+                    temperature=0.5,
+                    top_k=15,
                     do_sample=True,
                     logits_processor=[AlternatingCodebooksLogitsProcessor(input_start_len=len(input_tokens[0]),
                                                                         codebook_size=2048,
@@ -122,13 +122,11 @@ if __name__ == '__main__':
     parser = ArgumentParser()    
     args = parser.parse_args()
 
-    model = Infer('/home/meraki/Downloads/mimi_speaker_ids_249k.pt')
-    audio = model.infer("""Democracy is one of the most revered and widely embraced systems of governance.
-celebrated for its commitment to the ideals of freedom, equality, and participation.
-At its core, democracy ensures that the power to govern resides with the people.
-offering them the opportunity to shape the policies and leadership of their society. 
-While its forms and structures may vary across nations, the virtues of democracy transcend these differences.
-upholding values that promote human dignity, social progress, and collective well-being.""")
+    model = Infer('/home/.cache/indri/models/mimi_all/gpt_last.pt')
+    audio = model.infer("""Democracy is one of the most revered and widely embraced systems of governance.""")
+    from silero_vad import save_audio
+    print(audio[0].shape)
+    save_audio('test.wav', audio[0][0], 24000)
 
 
 

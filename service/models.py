@@ -6,28 +6,32 @@ class Speakers(Enum):
     SPEAKER_1 = '[spkr_hifi_tts_9017]'
     SPEAKER_2 = '[spkr_jenny_jenny]'
     # English YouTube Speakers
-    SPEAKER_3 = '[spkr_youtube_webds_en_akshat]'
-    SPEAKER_4 = '[spkr_youtube_webds_en_historyofindia]'
-    SPEAKER_5 = '[spkr_youtube_webds_en_mkbhd]'
-    SPEAKER_6 = '[spkr_youtube_webds_en_secondhandstories]'
-    SPEAKER_7 = '[spkr_youtube_webds_en_storiesofmahabharatha]'
-    SPEAKER_8 = '[spkr_youtube_webds_en_teded]'
+    SPEAKER_3 = '[spkr_youtube_webds_en_akshat]' #b
+    SPEAKER_4 = '[spkr_youtube_webds_en_historyofindia]' #g
+    SPEAKER_5 = '[spkr_youtube_webds_en_mkbhd]' #g
+    SPEAKER_6 = '[spkr_youtube_webds_en_secondhandstories]' #g
+    SPEAKER_7 = '[spkr_youtube_webds_en_storiesofmahabharatha]' #g
+    SPEAKER_8 = '[spkr_youtube_webds_en_teded]' #chaotic good 
 
     # Hindi YouTube Speakers
-    SPEAKER_9 = '[spkr_youtube_webds_hi_a2motivation]'
-    SPEAKER_10 = '[spkr_youtube_webds_hi_akshat]'
-    SPEAKER_11 = '[spkr_youtube_webds_hi_dhruvrathee]'
-    SPEAKER_12 = '[spkr_youtube_webds_hi_hindiaudiobooks]'
-    SPEAKER_13 = '[spkr_youtube_webds_hi_kabitaskitchen]'
-    SPEAKER_14 = '[spkr_youtube_webds_hi_mrbeast]'
-    SPEAKER_15 = '[spkr_youtube_webds_hi_neelimaaudiobooks]'
-    SPEAKER_16 = '[spkr_youtube_webds_hi_physicswallah]'
-    SPEAKER_17 = '[spkr_youtube_webds_hi_pmmodi]'
-    SPEAKER_18 = '[spkr_youtube_webds_hi_ranveerallahbadia]'
-    SPEAKER_19 = '[spkr_youtube_webds_hi_sandeepmaheshwari]'
-    SPEAKER_20 = '[spkr_youtube_webds_hi_technicalguruji]'
-    SPEAKER_21 = '[spkr_youtube_webds_hi_unacademyjee]'
-    SPEAKER_22 = '[spkr_youtube_webds_hi_vivekbindra]'
+    SPEAKER_9 = '[spkr_youtube_webds_hi_a2motivation]' #g
+    SPEAKER_10 = '[spkr_youtube_webds_hi_akshat]' #b
+    SPEAKER_11 = '[spkr_youtube_webds_hi_dhruvrathee]' #b
+    SPEAKER_12 = '[spkr_youtube_webds_hi_hindiaudiobooks]' #g
+    SPEAKER_13 = '[spkr_youtube_webds_hi_kabitaskitchen]' #g
+    SPEAKER_14 = '[spkr_youtube_webds_hi_mrbeast]' #b
+    SPEAKER_15 = '[spkr_youtube_webds_hi_neelimaaudiobooks]' #g
+    SPEAKER_16 = '[spkr_youtube_webds_hi_physicswallah]' #b 
+    SPEAKER_17 = '[spkr_youtube_webds_hi_pmmodi]'#m
+    SPEAKER_18 = '[spkr_youtube_webds_hi_ranveerallahbadia]' #m
+    SPEAKER_19 = '[spkr_youtube_webds_hi_sandeepmaheshwari]' #b
+    SPEAKER_20 = '[spkr_youtube_webds_hi_technicalguruji]' #b
+    SPEAKER_21 = '[spkr_youtube_webds_hi_unacademyjee]' #b
+    SPEAKER_22 = '[spkr_youtube_webds_hi_vivekbindra]' #m
+    SPEAKER_23 = '[spkr_youtube_webds_en_derekperkins]' #g
+    SPEAKER_24 = '[spkr_youtube_webds_en_mukesh]' #g
+    SPEAKER_25 = '[spkr_youtube_webds_en_attenborough]' #g
+    SPEAKER_26 = '[spkr_youtube_webds_hi_warikoo]' #g
 
 class TTSRequest(BaseModel):
     text: str
@@ -76,7 +80,11 @@ def speaker_mapping(speaker: Speakers) -> str:
         Speakers.SPEAKER_19: '[spkr_youtube_webds_hi_sandeepmaheshwari]',
         Speakers.SPEAKER_20: '[spkr_youtube_webds_hi_technicalguruji]',
         Speakers.SPEAKER_21: '[spkr_youtube_webds_hi_unacademyjee]',
-        Speakers.SPEAKER_22: '[spkr_youtube_webds_hi_vivekbindra]'
+        Speakers.SPEAKER_22: '[spkr_youtube_webds_hi_vivekbindra]',
+        Speakers.SPEAKER_23: '[spkr_youtube_webds_en_derekperkins]',
+        Speakers.SPEAKER_24: '[spkr_youtube_webds_en_mukesh]',
+        Speakers.SPEAKER_25: '[spkr_youtube_webds_en_attenborough]',
+        Speakers.SPEAKER_26: '[spkr_youtube_webds_hi_warikoo]'
     }
 
     speaker_val = spkr_map.get(speaker)
