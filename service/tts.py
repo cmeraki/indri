@@ -57,6 +57,10 @@ class TTS:
             logits_processors=logits_processors
         )
 
+    async def log_config(self):
+        self.model_config = await self.lm_engine.engine.get_model_config()
+        logger.info(f'Model dtype: {self.model_config.dtype}, quantization: {self.model_config.quantization}')
+
     async def generate_async(self,
         text: str,
         speaker: str,
@@ -155,6 +159,7 @@ async def main():
     audio, sr = torchaudio.load('service/sample/mkbhd.sample1.completion.wav')
 
     model = TTS('cmeraki/hf-tts-speakermashup', 'cuda:0')
+    await model.log_config()
 
     # Pure TTS
     result = await model.generate_async(
