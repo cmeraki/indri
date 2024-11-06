@@ -19,31 +19,47 @@ def deserialize_tokens(tokens):
     return acoustic_tokens
 
 
-def sanitize_text(text: str) -> list[str]:
+def sanitize_text(text: str, max_context_words: int) -> list[str]:
     """
     Sanitize text to be used for TTS
 
     Args:
         text (str): Text to sanitize
+        max_context_words (int): Maximum number of words in a sentence
 
     Returns:
         list[str]: List of sentences, split by punctuation (., !, ?)
     """
     text = text.lower()
+
+    # Remove more than one newlines and tabs
     text = re.sub(r'\n+', ' ', text)
     text = re.sub(r'[ \t]+', ' ', text)
 
+    # Remove non-alphanumeric characters except for , . ? !
     # allowed_pattern = r'[^a-z0-9\s,\.?\n\!]'
     # text = re.sub(allowed_pattern, '', text)
+
+    # Remove more than one punctuation mark
     text = re.sub(r'([,\.?])+', r'\1', text)
 
-    # pattern = r'([.!?])'
-    # segments = re.split(pattern, text)
+    # Split sentences by max context length
+    total_words = text.split(' ')
+    sentences = []
+    current_sentence = ''
 
-    sentences = [text.strip()]
+    for i in range(0, len(total_words), max_context_words):
+        current_sentence = ' '.join(total_words[i:i+max_context_words])
+        sentences.append(current_sentence.strip())
+
     return sentences
 
-    # current_sentence = ''
+    # Split sentences by punctuation (., !, ?)
+    pattern = r'([.!?])'
+    segments = re.split(pattern, text)
+
+    sentences = []
+    current_sentence = ''
 
     for segment in segments:
         current_sentence += segment
@@ -77,14 +93,10 @@ def alternative_logits_processor(
     Returns:
         torch.Tensor - Processed logits. Shape (vocab_size)
     """
-    logger.debug(f'Stop token: {stop_token}')
-
     codebook_indices = len(past_token_ids) % num_codebooks
 
     start_idx = offset + codebook_indices * codebook_size
     end_idx = offset + (codebook_indices + 1) * codebook_size
-
-    logger.debug(f'Past_token_ids: {len(past_token_ids)}, codebook indices: {codebook_indices}, start idx: {start_idx}, end idx: {end_idx}')
 
     mask = torch.zeros_like(logits)
     mask[start_idx:end_idx] = 1
