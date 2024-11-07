@@ -7,6 +7,7 @@ import numpy as np
 from transformers import MimiModel, AutoTokenizer
 from typing import List, Dict, Any, Tuple, Optional
 from functools import partial
+import pyloudnorm as pyln
 
 from vllm import SamplingParams, AsyncEngineArgs
 from vllm.engine.async_llm_engine import AsyncLLMEngine
@@ -144,6 +145,7 @@ class TTS:
         logger.info(f'Mimi tokens shape: {mimi_tokens.shape}')
 
         audio, decode_time = self.decode_audio(mimi_tokens)
+        # audio = pyln.normalize.peak(audio, -1.0)
 
         metrics = TTSMetrics(
             time_to_first_token=metrics['time_to_first_token'],
@@ -169,8 +171,19 @@ class TTS:
 
         return audio, end_time - start_time
 
-if __name__ == '__main__':
-    tts = TTS('cmeraki/mimi_tts_hf', 'cuda:0')
-    result = tts.generate('Long ago, in a distant kingdom between emerald hills and sapphire lakes, magic flowed freely. A wise king ruled, ensuring peace and prosperity.')
+async def main():
+    import uuid
+    import torchaudio
 
-    print(result['metrics'])
+    model = TTS('cmeraki/mimi_tts_hf_stage', 'cuda:0')
+    result = await model.generate_async(
+        'मेरे प्यारे देशवासियों, आज हम एक नए भारत की ओर कदम बढ़ा रहे हैं।',
+        speaker='[spkr_youtube_webds_hi_pmmodi]',
+        request_id=str(uuid.uuid4())
+    )
+
+    torchaudio.save('output.wav', torch.from_numpy(result['audio']).unsqueeze(0), sample_rate=24000, format='mp3')
+
+if __name__ == '__main__':
+    import asyncio
+    asyncio.run(main())

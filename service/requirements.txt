@@ -6,3 +6,4 @@ vllm
 fastapi
 pydantic
 numpy
+pyloudnorm
