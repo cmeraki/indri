@@ -81,9 +81,11 @@ class TTS:
 
     async def generate_async(self,
         text: str,
-        speaker: Optional[str] = '[spkr_hifi_tts_9017]',
+        speaker: str,
         request_id: Optional[str] = None
     ) -> Dict[str, Any]:
+        if speaker is None:
+            raise ValueError('Speaker is required')
 
         start_time = time.time()
         batch_text = sanitize_text(text)

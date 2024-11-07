@@ -1,6 +1,7 @@
 import time
 import base64
 import uuid
+import random
 import traceback
 import numpy as np
 from fastapi import FastAPI, HTTPException
@@ -8,7 +9,11 @@ from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from .tts import TTS
-from .models import TTSRequest, TTSResponse, TTSSpeakersResponse, Speakers, TTSMetrics, speaker_mapping
+from .models import (
+    TTSRequest, TTSResponse, TTSSpeakersResponse, Speakers, TTSMetrics,
+    SpeakerTextRequest, SpeakerTextResponse
+)
+from .models import SPEAKER_MAP
 from .logger import get_logger
 from .launcher import _add_shutdown_handlers
 
@@ -43,7 +48,16 @@ async def text_to_speech(requests: TTSRequest):
     logger.info(f'Received text: {requests.text} with speaker: {requests.speaker}', extra={'request_id': request_id})
 
     try:
-        results = await model.generate_async(requests.text, speaker_mapping(requests.speaker), request_id=request_id)
+        speaker = SPEAKER_MAP.get(requests.speaker, {'id': None}).get('id')
+
+        if speaker is None:
+            raise HTTPException(status_code=400, detail=f'Speaker {requests.speaker} not supported')
+
+        results = await model.generate_async(
+            requests.text,
+            speaker,
+            request_id=request_id
+        )
         audio: np.ndarray = results['audio']
         metrics: TTSMetrics = results['metrics']
     except Exception as e:
@@ -69,6 +83,17 @@ async def text_to_speech(requests: TTSRequest):
 async def available_speakers():
     return {
         "speakers": [s for s in Speakers]
+    }
+
+@app.post("/speaker_text", response_model=SpeakerTextResponse)
+async def speaker_text(request: SpeakerTextRequest):
+    speaker_text = SPEAKER_MAP.get(request.speaker, {'text': None}).get('text')
+
+    if speaker_text is None:
+        raise HTTPException(status_code=400, detail=f'Speaker {request.speaker} not supported')
+
+    return {
+        "speaker_text": random.choice(speaker_text)
     }
 
 if __name__ == "__main__":
