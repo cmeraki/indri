@@ -51,6 +51,10 @@ class SpeakerTextRequest(BaseModel):
 class SpeakerTextResponse(BaseModel):
     speaker_text: str
 
+class AudioFeedbackRequest(BaseModel):
+    id: str
+    feedback: int
+
 # Maps to speaker tags used in the model
 SPEAKER_MAP = {
     Speakers.SPEAKER_1: {
