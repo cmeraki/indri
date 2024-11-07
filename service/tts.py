@@ -145,7 +145,7 @@ class TTS:
         logger.info(f'Mimi tokens shape: {mimi_tokens.shape}')
 
         audio, decode_time = self.decode_audio(mimi_tokens)
-        # audio = pyln.normalize.peak(audio, -1.0)
+        audio = pyln.normalize.peak(audio, -1.0)
 
         metrics = TTSMetrics(
             time_to_first_token=metrics['time_to_first_token'],
@@ -164,7 +164,7 @@ class TTS:
         with torch.no_grad():
             audio_tokens = torch.tensor(np.expand_dims(audio_tokens, axis=0), device=self.device)
             audio = self.audio_tokenizer.decode(audio_tokens).audio_values
-            audio = audio.detach().cpu().numpy()
+            audio = audio.detach().cpu().numpy()[0]
 
         end_time = time.time()
         logger.info(f'Time taken to decode audio: {end_time - start_time} seconds')
@@ -182,7 +182,7 @@ async def main():
         request_id=str(uuid.uuid4())
     )
 
-    torchaudio.save('output.wav', torch.from_numpy(result['audio']).unsqueeze(0), sample_rate=24000, format='mp3')
+    torchaudio.save('output.wav', torch.from_numpy(result['audio']), sample_rate=24000, format='mp3')
 
 if __name__ == '__main__':
     import asyncio

@@ -59,6 +59,7 @@ async def text_to_speech(requests: TTSRequest):
             request_id=request_id
         )
         audio: np.ndarray = results['audio']
+        audio = np.expand_dims(audio, 0) # TODO: Remove this once we start sending wav files
         metrics: TTSMetrics = results['metrics']
     except Exception as e:
         logger.critical(f"Error in model generation: {e}\nStacktrace: {''.join(traceback.format_tb(e.__traceback__))}", extra={'request_id': request_id})
