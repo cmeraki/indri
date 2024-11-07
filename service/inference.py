@@ -1,9 +1,15 @@
+import io
 import time
 import base64
 import uuid
 import random
 import traceback
 import numpy as np
+import torchaudio
+from pathlib import Path
+from typing import Dict
+from torio.io import CodecConfig
+
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,7 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .tts import TTS
 from .models import (
     TTSRequest, TTSResponse, TTSSpeakersResponse, Speakers, TTSMetrics,
-    SpeakerTextRequest, SpeakerTextResponse
+    SpeakerTextRequest, SpeakerTextResponse, AudioFeedbackRequest
 )
 from .models import SPEAKER_MAP
 from .logger import get_logger
@@ -97,6 +103,50 @@ async def speaker_text(request: SpeakerTextRequest):
         "speaker_text": random.choice(speaker_text)
     }
 
+
+@app.get("/sample_audio")
+async def sample_audio():
+    choice = random.choice(list(sample_audio_files.keys()))
+    logger.info(f'Serving sample audio: {choice}')
+
+    aud, sr = sample_audio_files[choice]
+
+    buffer = io.BytesIO()
+    torchaudio.save(
+        buffer,
+        aud,
+        sample_rate=sr,
+        format='mp3',
+        encoding='PCM_S',
+        bits_per_sample=16,
+        backend='ffmpeg',
+        compression=CodecConfig(bit_rate=64000)
+    )
+    buffer.seek(0)
+
+    headers = {
+        "Content-Type": "audio/wav",
+        "Content-Disposition": "attachment; filename=speech.wav",
+        "X-Sample-ID": choice
+    }
+
+    return Response(
+        content=buffer.getvalue(),
+        headers=headers,
+        media_type="audio/wav"
+    )
+
+@app.post("/audio_feedback")
+async def audio_feedback(request: AudioFeedbackRequest):
+    assert request.id in sample_audio_files, f'Sample audio with id {request.id} not found'
+    assert request.feedback in [-1, 1], f'Feedback must be -1 or 1'
+
+    logger.info(f'Received audio feedback for {request.id}: {request.feedback}')
+    audio_feedback_counter[request.id] = request.feedback
+
+    return Response(status_code=200)
+
+
 if __name__ == "__main__":
     import uvicorn
     import argparse
@@ -116,6 +166,19 @@ if __name__ == "__main__":
         model_path=args.model_path,
         device=args.device
     )
+
+    global sample_audio_files
+    sample_audio_files: Dict[str, np.ndarray] = {}
+
+    file_names = list(Path('service/data/').resolve().glob('**/*.wav'))
+
+    logger.info(f'Found {len(file_names)} sample audio files')
+    for f in file_names:
+        aud, sr = torchaudio.load(f)
+        sample_audio_files[f.stem] = (aud, sr)
+
+    global audio_feedback_counter
+    audio_feedback_counter: Dict[str, int] = {} # id -> feedback
 
     server = uvicorn.Server(config=uvicorn.Config(app, host="0.0.0.0", port=args.port))
     _add_shutdown_handlers(app, server)
