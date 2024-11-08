@@ -1,8 +1,9 @@
+vllm==0.6.3
 torch
 torchaudio
 transformers
 pydantic
-vllm
 fastapi
 pydantic
 numpy
+pyloudnorm~=0.1
