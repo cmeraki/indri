@@ -107,40 +107,50 @@ async def speaker_text(request: SpeakerTextRequest):
 
 @app.get("/sample_audio")
 async def sample_audio():
-    choice = random.choice(sample_audio_files)
-    logger.info(f'Serving sample audio: {choice}')
+    try:
+        choice = random.choice(sample_audio_files)
+        logger.info(f'Serving sample audio: {choice}')
 
-    aud, sr = torchaudio.load(f'service/data/{choice}.wav')
+        aud, sr = torchaudio.load(f'service/data/{choice}.wav')
 
-    buffer = io.BytesIO()
-    torchaudio.save(
-        buffer,
-        aud,
-        sample_rate=sr,
-        format='mp3',
-        encoding='PCM_S',
-        bits_per_sample=16,
-        backend='ffmpeg',
-        compression=CodecConfig(bit_rate=64000)
-    )
-    buffer.seek(0)
+        buffer = io.BytesIO()
+        torchaudio.save(
+            buffer,
+            aud,
+            sample_rate=sr,
+            format='mp3',
+            encoding='PCM_S',
+            bits_per_sample=16,
+            backend='ffmpeg',
+            compression=CodecConfig(bit_rate=64000)
+        )
+        buffer.seek(0)
 
-    headers = {
-        "Content-Type": "audio/wav",
-        "Content-Disposition": "attachment; filename=speech.wav",
-        "X-Sample-ID": choice
-    }
+        headers = {
+            "Content-Type": "audio/wav",
+            "Content-Disposition": "attachment; filename=speech.wav",
+            "X-Sample-ID": choice
+        }
 
-    return Response(
-        content=buffer.getvalue(),
-        headers=headers,
-        media_type="audio/wav"
-    )
+        return Response(
+            content=buffer.getvalue(),
+            headers=headers,
+            media_type="audio/wav"
+        )
+
+    except Exception as e:
+        logger.error(f'Error in sampling audio: {e}')
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/audio_feedback")
 async def audio_feedback(request: AudioFeedbackRequest):
-    assert request.id in sample_audio_files, f'Sample audio with id {request.id} not found'
-    assert request.feedback in [-1, 1], f'Feedback must be -1 or 1'
+    try:
+        assert request.id in sample_audio_files, f'Sample audio with id {request.id} not found'
+        assert request.feedback in [-1, 1], f'Feedback must be -1 or 1'
+    except Exception as e:
+        logger.error(f'Error in audio feedback: {e}')
+        raise HTTPException(status_code=500, detail=str(e))
 
     logger.info(f'Received audio feedback for {request.id}: {request.feedback}')
     RealFakeFeedbackDB().insert_feedback(request.id, request.feedback)
@@ -168,14 +178,11 @@ if __name__ == "__main__":
         device=args.device
     )
 
-    global sample_audio_files
-    sample_audio_files: List[str] = []
-
     file_names = list(Path('service/data/').resolve().glob('**/*.wav'))
-
     logger.info(f'Found {len(file_names)} sample audio files')
-    for f in file_names:
-        sample_audio_files.append(f.stem)
+
+    global sample_audio_files
+    sample_audio_files = [f.stem for f in file_names]
 
     server = uvicorn.Server(config=uvicorn.Config(app, host="0.0.0.0", port=args.port))
     _add_shutdown_handlers(app, server)

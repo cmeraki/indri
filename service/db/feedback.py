@@ -1,9 +1,14 @@
+import time
 import sqlite3
 from pathlib import Path
 from threading import Lock
 from datetime import datetime
 from queue import Queue
 from contextlib import contextmanager
+
+from ..logger import get_logger
+
+logger = get_logger(__name__)
 
 class RealFakeFeedbackDB:
     _instance = None
@@ -49,6 +54,7 @@ class RealFakeFeedbackDB:
             self._connection_pool.put(connection)
 
     def insert_feedback(self, audio_id: str, feedback: int):
+        start_time = time.time()
         with self._db_lock:
             with self.get_connection() as conn:
                 timestamp = datetime.now().isoformat()
@@ -58,6 +64,9 @@ class RealFakeFeedbackDB:
                     (audio_id, feedback, timestamp)
                 )
                 conn.commit()
+
+        end_time = time.time()
+        logger.info(f'Inserted feedback for {audio_id} in {end_time - start_time:.4f} seconds')
 
     def __del__(self):
         """Cleanup connections when the instance is destroyed"""
