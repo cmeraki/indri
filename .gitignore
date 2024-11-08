@@ -170,3 +170,4 @@ logs/*
 omni.wav
 *.py.swp
 debug/
+*.db
