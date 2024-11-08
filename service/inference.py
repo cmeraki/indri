@@ -1,9 +1,15 @@
+import io
 import time
 import base64
 import uuid
 import random
 import traceback
 import numpy as np
+import torchaudio
+from pathlib import Path
+from typing import List
+from torio.io import CodecConfig
+
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,11 +17,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from .tts import TTS
 from .models import (
     TTSRequest, TTSResponse, TTSSpeakersResponse, Speakers, TTSMetrics,
-    SpeakerTextRequest, SpeakerTextResponse
+    SpeakerTextRequest, SpeakerTextResponse, AudioFeedbackRequest
 )
 from .models import SPEAKER_MAP
 from .logger import get_logger
 from .launcher import _add_shutdown_handlers
+from .db.feedback import RealFakeFeedbackDB
 
 logger = get_logger(__name__)
 
@@ -34,6 +41,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["x-sample-id"]
 )
 
 @app.get("/health")
@@ -97,6 +105,60 @@ async def speaker_text(request: SpeakerTextRequest):
         "speaker_text": random.choice(speaker_text)
     }
 
+
+@app.get("/sample_audio")
+async def sample_audio():
+    try:
+        choice = random.choice(sample_audio_files)
+        logger.info(f'Serving sample audio: {choice}')
+
+        aud, sr = torchaudio.load(f'service/data/{choice}.wav')
+
+        buffer = io.BytesIO()
+        torchaudio.save(
+            buffer,
+            aud,
+            sample_rate=sr,
+            format='mp3',
+            encoding='PCM_S',
+            bits_per_sample=16,
+            backend='ffmpeg',
+            compression=CodecConfig(bit_rate=64000)
+        )
+        buffer.seek(0)
+
+        headers = {
+            "Content-Type": "audio/wav",
+            "Content-Disposition": "attachment; filename=speech.wav",
+            "x-sample-id": choice
+        }
+
+        return Response(
+            content=buffer.getvalue(),
+            headers=headers,
+            media_type="audio/wav"
+        )
+
+    except Exception as e:
+        logger.error(f'Error in sampling audio: {e}')
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/audio_feedback")
+async def audio_feedback(request: AudioFeedbackRequest):
+    try:
+        assert request.id in sample_audio_files, f'Sample audio with id {request.id} not found'
+        assert request.feedback in [-1, 1], f'Feedback must be -1 or 1'
+    except Exception as e:
+        logger.error(f'Error in audio feedback: {e}')
+        raise HTTPException(status_code=500, detail=str(e))
+
+    logger.info(f'Received audio feedback for {request.id}: {request.feedback}')
+    RealFakeFeedbackDB().insert_feedback(request.id, request.feedback)
+
+    return Response(status_code=200)
+
+
 if __name__ == "__main__":
     import uvicorn
     import argparse
@@ -116,6 +178,12 @@ if __name__ == "__main__":
         model_path=args.model_path,
         device=args.device
     )
+
+    file_names = list(Path('service/data/').resolve().glob('**/*.wav'))
+    logger.info(f'Found {len(file_names)} sample audio files')
+
+    global sample_audio_files
+    sample_audio_files = [f.stem for f in file_names]
 
     server = uvicorn.Server(config=uvicorn.Config(app, host="0.0.0.0", port=args.port))
     _add_shutdown_handlers(app, server)

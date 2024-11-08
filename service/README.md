@@ -1,5 +1,26 @@
 # Indri Inference Service
 
+## Prerequisites
+
+- Python 3.10+
+- CUDA 12.1+
+
+Install dependencies:
+
+```bash
+pip install -r service/requirements.txt
+```
+
+Install ffmpeg:
+
+For linux:
+
+```bash
+sudo apt update -y
+sudo apt upgrade -y
+sudo apt install ffmpeg -y
+```
+
 ## Running the service
 
 ```bash
