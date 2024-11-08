@@ -41,6 +41,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["x-sample-id"]
 )
 
 @app.get("/health")
@@ -129,7 +130,7 @@ async def sample_audio():
         headers = {
             "Content-Type": "audio/wav",
             "Content-Disposition": "attachment; filename=speech.wav",
-            "X-Sample-ID": choice
+            "x-sample-id": choice
         }
 
         return Response(
