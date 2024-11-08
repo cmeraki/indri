@@ -7,7 +7,7 @@ import traceback
 import numpy as np
 import torchaudio
 from pathlib import Path
-from typing import Dict
+from typing import List
 from torio.io import CodecConfig
 
 from fastapi import FastAPI, HTTPException
@@ -22,6 +22,7 @@ from .models import (
 from .models import SPEAKER_MAP
 from .logger import get_logger
 from .launcher import _add_shutdown_handlers
+from .db.feedback import RealFakeFeedbackDB
 
 logger = get_logger(__name__)
 
@@ -105,10 +106,10 @@ async def speaker_text(request: SpeakerTextRequest):
 
 @app.get("/sample_audio")
 async def sample_audio():
-    choice = random.choice(list(sample_audio_files.keys()))
+    choice = random.choice(sample_audio_files)
     logger.info(f'Serving sample audio: {choice}')
 
-    aud, sr = sample_audio_files[choice]
+    aud, sr = torchaudio.load(f'service/data/{choice}.wav')
 
     buffer = io.BytesIO()
     torchaudio.save(
@@ -141,7 +142,7 @@ async def audio_feedback(request: AudioFeedbackRequest):
     assert request.feedback in [-1, 1], f'Feedback must be -1 or 1'
 
     logger.info(f'Received audio feedback for {request.id}: {request.feedback}')
-    audio_feedback_counter[request.id] = request.feedback
+    RealFakeFeedbackDB().insert_feedback(request.id, request.feedback)
 
     return Response(status_code=200)
 
@@ -167,17 +168,13 @@ if __name__ == "__main__":
     )
 
     global sample_audio_files
-    sample_audio_files: Dict[str, np.ndarray] = {}
+    sample_audio_files: List[str] = []
 
     file_names = list(Path('service/data/').resolve().glob('**/*.wav'))
 
     logger.info(f'Found {len(file_names)} sample audio files')
     for f in file_names:
-        aud, sr = torchaudio.load(f)
-        sample_audio_files[f.stem] = (aud, sr)
-
-    global audio_feedback_counter
-    audio_feedback_counter: Dict[str, int] = {} # id -> feedback
+        sample_audio_files.append(f.stem)
 
     server = uvicorn.Server(config=uvicorn.Config(app, host="0.0.0.0", port=args.port))
     _add_shutdown_handlers(app, server)
