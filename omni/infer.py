@@ -72,18 +72,17 @@ class Infer:
     def audio_infer(self, audio_tokens):
         input_tokens = np.hstack([
             self.acoustic_modality_token,
-            audio_tokens
+            audio_tokens + cfg.OFFSET[MIMI]
         ])
         
         input_tokens = (torch.tensor(input_tokens, dtype=torch.long, device=DEVICE)[None, ...])
-        
         with CTX:
             self.omni_model.generation_config.eos_token_id = self.stop_token
             semantic_tokens = self.omni_model.generate(
                 input_tokens,
                 max_length=1024,
-                temperature=0.4,
-                top_k=15,
+                temperature=0.9,
+                top_k=50,
                 do_sample=True,
                 logits_processor=[AlternatingCodebooksLogitsProcessor(input_start_len=len(input_tokens[0]),
                                                                     codebook_size=2048,
@@ -93,13 +92,13 @@ class Infer:
             )
             semantic_tokens = semantic_tokens.detach().cpu().numpy()
             
-            sem_tokens = semantic_tokens[0][len(input_tokens[0]):]
+            sem_tokens = semantic_tokens[0][1:]
             last = np.where(sem_tokens==self.stop_token)[0]
             if last.any():
-                full_semantic_tokens = sem_tokens[:last] - cfg.OFFSET[MIMI]
+                full_semantic_tokens = sem_tokens[:last[0]] - cfg.OFFSET[MIMI]
             else:
                 full_semantic_tokens = sem_tokens - cfg.OFFSET[MIMI]
-
+        full_semantic_tokens = full_semantic_tokens[:(len(full_semantic_tokens)//4)*4]
         # full_semantic_tokens = np.hstack(full_semantic_tokens)
         mimi_tokens = self.deserialize_tokens(full_semantic_tokens)
 
