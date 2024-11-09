@@ -69,6 +69,44 @@ class Infer:
         return text
 
     @torch.inference_mode()
+    def audio_infer(self, audio_tokens):
+        input_tokens = np.hstack([
+            self.acoustic_modality_token,
+            audio_tokens
+        ])
+        
+        input_tokens = (torch.tensor(input_tokens, dtype=torch.long, device=DEVICE)[None, ...])
+        
+        with CTX:
+            self.omni_model.generation_config.eos_token_id = self.stop_token
+            semantic_tokens = self.omni_model.generate(
+                input_tokens,
+                max_length=1024,
+                temperature=0.4,
+                top_k=15,
+                do_sample=True,
+                logits_processor=[AlternatingCodebooksLogitsProcessor(input_start_len=len(input_tokens[0]),
+                                                                    codebook_size=2048,
+                                                                    num_codebooks=4,
+                                                                    offset=cfg.OFFSET[MIMI],
+                                                                    stop_token=self.stop_token)]
+            )
+            semantic_tokens = semantic_tokens.detach().cpu().numpy()
+            
+            sem_tokens = semantic_tokens[0][len(input_tokens[0]):]
+            last = np.where(sem_tokens==self.stop_token)[0]
+            if last.any():
+                full_semantic_tokens = sem_tokens[:last] - cfg.OFFSET[MIMI]
+            else:
+                full_semantic_tokens = sem_tokens - cfg.OFFSET[MIMI]
+
+        # full_semantic_tokens = np.hstack(full_semantic_tokens)
+        mimi_tokens = self.deserialize_tokens(full_semantic_tokens)
+
+        out = self.model.decode(torch.tensor(np.expand_dims(mimi_tokens, axis=0)))
+        return out.audio_values
+    
+    @torch.inference_mode()
     def infer(self, text, speaker='[spkr_jenny_jenny]'):
         sentences = text.split('\n')
         full_semantic_tokens = []
