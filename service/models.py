@@ -1,6 +1,8 @@
+import numpy as np
 from enum import Enum
 from pydantic import BaseModel
-from typing import List, Optional, Tuple
+from dataclasses import dataclass
+from typing import List, Optional, Tuple, Dict, Any
 
 class Speakers(Enum):
     """
@@ -33,6 +35,22 @@ class TTSMetrics(BaseModel):
     decoding_tokens: List[int]
     generate_end_to_end_time: float
     end_to_end_time: Optional[float] = None
+
+class AudioContinuationMetrics(BaseModel):
+    time_to_first_token: List[float]
+    time_to_last_token: List[float]
+    input_tokens: List[int]
+    decoding_tokens: List[int]
+    time_to_encode_audio: float
+    time_to_decode_audio: Optional[float] = None
+    generate_end_to_end_time: float
+    end_to_end_time: Optional[float] = None
+
+@dataclass
+class AudioOutput:
+    audio: np.ndarray
+    sample_rate: int
+    audio_metrics: Dict[str, Any]
 
 class TTSResponse(BaseModel):
     array: str
