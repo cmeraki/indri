@@ -7,3 +7,4 @@ fastapi
 pydantic
 numpy
 pyloudnorm~=0.1
+python-multipart

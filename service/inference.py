@@ -1,23 +1,26 @@
 import io
 import time
 import base64
+import json
 import uuid
+import torch
 import random
 import traceback
 import numpy as np
 import torchaudio
 from pathlib import Path
-from typing import List
 from torio.io import CodecConfig
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, File, UploadFile
 from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from .tts import TTS
+from .src.audio_continuation import AudioContinuation
 from .models import (
     TTSRequest, TTSResponse, TTSSpeakersResponse, Speakers, TTSMetrics,
-    SpeakerTextRequest, SpeakerTextResponse, AudioFeedbackRequest
+    SpeakerTextRequest, SpeakerTextResponse, AudioFeedbackRequest,
+    AudioContinuationMetrics, AudioOutput
 )
 from .models import SPEAKER_MAP
 from .logger import get_logger
@@ -41,7 +44,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["x-sample-id"]
+    expose_headers=["x-sample-id", "x-request-id", "x-metrics"]
 )
 
 @app.get("/health")
@@ -61,8 +64,10 @@ async def text_to_speech(requests: TTSRequest):
         if speaker is None:
             raise HTTPException(status_code=400, detail=f'Speaker {requests.speaker} not supported')
 
-        results = await model.generate_async(
-            requests.text,
+        # Truncate text to first 500 characters
+        text = requests.text[:500]
+        results = await tts_model.generate_async(
+            text,
             speaker,
             request_id=request_id
         )
@@ -105,7 +110,6 @@ async def speaker_text(request: SpeakerTextRequest):
         "speaker_text": random.choice(speaker_text)
     }
 
-
 @app.get("/sample_audio")
 async def sample_audio():
     try:
@@ -143,7 +147,6 @@ async def sample_audio():
         logger.error(f'Error in sampling audio: {e}')
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @app.post("/audio_feedback")
 async def audio_feedback(request: AudioFeedbackRequest):
     try:
@@ -158,6 +161,68 @@ async def audio_feedback(request: AudioFeedbackRequest):
 
     return Response(status_code=200)
 
+@app.post("/audio_completion")
+async def audio_completion(file: UploadFile = File(...)):
+    """
+    Receive a request with a wav file and return a completion
+    """
+    contents = await file.read()
+    audio, sr = torchaudio.load(contents)
+
+    # Limit to 5 seconds
+    audio = audio[:, :sr * 5]
+    request_id = str(uuid.uuid4())
+
+    start_time = time.time()
+    logger.info(f'Received audio completion request', extra={'request_id': request_id})
+
+    try:
+        results: AudioOutput = await ac_model.generate_async(
+            audio=audio,
+            sample_rate=sr,
+            request_id=request_id
+        )
+        metrics = results.audio_metrics
+
+        audio_tensor = torch.from_numpy(results.audio)
+        logger.info(f'Audio shape: {audio_tensor.shape}', extra={'request_id': request_id})
+
+        buffer = io.BytesIO()
+        torchaudio.save(
+            buffer,
+            audio_tensor,
+            sample_rate=results.sample_rate,
+            format='mp3',
+            encoding='PCM_S',
+            bits_per_sample=16,
+            backend='ffmpeg',
+            compression=CodecConfig(bit_rate=64000)
+        )
+        buffer.seek(0)
+
+    except Exception as e:
+        logger.critical(f"Error in model generation: {e}\nStacktrace: {''.join(traceback.format_tb(e.__traceback__))}", extra={'request_id': request_id})
+        raise HTTPException(status_code=500, detail=str(request_id) + ' ' + str(e))
+
+    end_time = time.time()
+    metrics['end_to_end_time'] = end_time - start_time
+    metrics = AudioContinuationMetrics(**metrics)
+
+    headers = {
+        "Content-Type": "audio/wav",
+        "Content-Disposition": "attachment; filename=speech.wav",
+        "x-request-id": request_id,
+        "x-metrics": json.dumps(metrics.model_dump())
+    }
+
+    logger.info(f'Metrics: {metrics}', extra={'request_id': request_id})
+
+    return Response(
+        content=buffer.getvalue(),
+        headers=headers,
+        media_type="audio/wav"
+    )
+
 
 if __name__ == "__main__":
     import uvicorn
@@ -165,7 +230,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--model_path', type=str, default='cmeraki/mimi_tts_hf', choices=['cmeraki/mimi_tts_hf', 'cmeraki/mimi_tts_hf_stage'], help='HF model repository id')
+    parser.add_argument('--model_path', type=str, default='cmeraki/mimi_tts_hf', choices=['cmeraki/mimi_tts_hf', 'cmeraki/mimi_tts_hf_stage', 'cmeraki/hf-tts-speakermashup'], help='HF model repository id')
     parser.add_argument('--device', type=str, default='cuda:0', required=False, help='Device to use for inference')
     parser.add_argument('--port', type=int, default=8000, required=False, help='Port to run the server on')
 
@@ -173,11 +238,11 @@ if __name__ == "__main__":
 
     logger.info(f'Loading model from {args.model_path} on {args.device} and starting server on port {args.port}')
 
-    global model
-    model = TTS(
-        model_path=args.model_path,
-        device=args.device
-    )
+    global tts_model
+    global ac_model
+
+    tts_model = TTS(model_path=args.model_path, device=args.device)
+    ac_model = AudioContinuation(model_path='cmeraki/hf-audio-continue', device=args.device)
 
     file_names = list(Path('service/data/').resolve().glob('**/*.wav'))
     logger.info(f'Found {len(file_names)} sample audio files')

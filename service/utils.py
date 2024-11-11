@@ -18,6 +18,19 @@ def deserialize_tokens(tokens):
     assert acoustic_tokens.shape == (4, min_shape), 'Deserialized tokens does not have the correct shape'
     return acoustic_tokens
 
+def codebook_encoding(tokens: torch.tensor, per_codebook_size: int, offset: int):
+    """Receive n/4 x 4, flatten, add offset"""
+
+    c, n = tokens.shape
+
+    # Adding codebook offset
+    for i in range(c):
+        tokens[i, :] += i * per_codebook_size
+
+    flat_arr = tokens.reshape(c * n, order='F')
+    flat_arr += offset
+
+    return flat_arr
 
 def sanitize_text(text: str) -> list[str]:
     """
