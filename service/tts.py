@@ -200,7 +200,7 @@ class TTS:
 
             o = o[:end]
             o = o - cfg.OFFSET[MIMI]
-            o = deserialize_tokens(o)
+            o = deserialize_tokens(o, cfg.n_codebooks)
             assert np.all(o >= 0), f'Negative token index generated for batch {idx}'
 
             metrics['time_to_first_token'].append(
@@ -229,7 +229,7 @@ class TTS:
             generate_end_to_end_time=time.time()-start_time
         )
 
-        return {"audio": audio, "sample_rate": sample_rate, "metrics": metrics}
+        return {"audio": audio, "sample_rate": 24000, "metrics": metrics}
 
 async def main():
     import uuid
