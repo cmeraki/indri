@@ -39,7 +39,7 @@ print('Cache directory at: ', CACHE_DIR)
 SPEAKER_FILE = 'allowed_speakers.jsonl'
 
 class Config:
-    n_codebooks = 4
+    n_codebooks = 8
     per_codebook_size = 2048
 
     VOCAB_SIZES = {
@@ -66,6 +66,6 @@ class Config:
 
     # This stop token is used for all the modalities
     STOP_TOKEN = '[stop]'
-    VOCAB_SIZE = 59968
+    VOCAB_SIZE = 70016
 
     print('Gap tokens: ', VOCAB_SIZE - sum(VOCAB_SIZES.values()))

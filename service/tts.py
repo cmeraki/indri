@@ -72,7 +72,7 @@ class TTS:
         logger.info(f'Input tokens shape: {len(input_tokens)} and batch size: {len(batch_text)}', extra={'request_id': request_id})
 
         prompt = TokensPrompt(prompt_token_ids=input_tokens[0])
-
+        
         results_generator = self.lm_engine.engine.generate(
             prompt=prompt,
             sampling_params=self.sampling_params,
@@ -105,7 +105,7 @@ class TTS:
 
             o = o[:end]
             o = o - cfg.OFFSET[MIMI]
-            o = deserialize_tokens(o)
+            o = deserialize_tokens(o, cfg.n_codebooks)
             assert np.all(o >= 0), f'Negative token index generated for batch {idx}'
 
             metrics['time_to_first_token'].append(

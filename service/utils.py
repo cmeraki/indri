@@ -6,17 +6,12 @@ from typing import Tuple
 from .logger import get_logger
 logger = get_logger(__name__)
 
-def deserialize_tokens(tokens):
-    cb1 = tokens[0::4]
-    cb2 = tokens[1::4]
-    cb3 = tokens[2::4]
-    cb4 = tokens[3::4]
-
-    min_shape = min(cb1.shape, cb2.shape, cb3.shape, cb4.shape)[0]
-    acoustic_tokens = np.stack([cb1[:min_shape], cb2[:min_shape] - 2048, cb3[:min_shape] - 4096, cb4[:min_shape] - 6144])
-
-    assert acoustic_tokens.shape == (4, min_shape), 'Deserialized tokens does not have the correct shape'
+def deserialize_tokens(tokens, num_codebooks):
+    cb = [tokens[i::num_codebooks] for i in range(num_codebooks)]
+    min_shape = min([c.shape for c in cb])[0]
+    acoustic_tokens = np.stack([c[:min_shape] - 2048 * i for i, c in enumerate(cb)])
     return acoustic_tokens
+
 
 def codebook_encoding(tokens: torch.tensor, per_codebook_size: int, offset: int):
     """Receive n/4 x 4, flatten, add offset"""

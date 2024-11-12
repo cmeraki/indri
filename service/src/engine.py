@@ -101,12 +101,6 @@ class AudioTokenizer:
         return tokens, end_time - start_time
 
 class TextTokenizer:
-    _instance = None
-    def __new__(cls, *args, **kwargs):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-        return cls._instance
-
     def __init__(self, model_path: str):
         self._tokenizer = AutoTokenizer.from_pretrained(model_path)
         self.convert_token = self._tokenizer.encode(cfg.TASK_TOKENS[CONVERT])

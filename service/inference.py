@@ -230,7 +230,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--model_path', type=str, default='cmeraki/mimi_tts_hf', choices=['cmeraki/mimi_tts_hf', 'cmeraki/mimi_tts_hf_stage', 'cmeraki/hf-tts-speakermashup'], help='HF model repository id')
+    parser.add_argument('--model_path', type=str, default='cmeraki/mimi_tts_hf', help='HF model repository id')
     parser.add_argument('--device', type=str, default='cuda:0', required=False, help='Device to use for inference')
     parser.add_argument('--port', type=int, default=8000, required=False, help='Port to run the server on')
 
