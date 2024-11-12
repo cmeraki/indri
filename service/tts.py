@@ -3,6 +3,7 @@ sys.path.append('omni/')
 
 import time
 import torch
+import torchaudio
 import numpy as np
 from typing import List, Dict, Any, Optional
 from functools import partial
@@ -136,14 +137,112 @@ class TTS:
 
         return {"audio": audio, "metrics": metrics}
 
+
+    # TODO: Merge this with generate_async
+    async def generate_async_with_audio(self,
+        text: str,
+        speaker: str,
+        audio: Optional[torch.Tensor] = None,
+        sample_rate: Optional[int] = None,
+        request_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        if speaker is None:
+            raise ValueError('Speaker is required')
+
+        start_time = time.time()
+
+        if audio is not None:
+            audio = torchaudio.transforms.Resample(sample_rate, 24000)(audio)
+            audio = pyln.normalize.peak(audio.numpy(), -1.0)
+            audio_tokens, _ = self.audio_tokenizer.encode(torch.from_numpy(audio).unsqueeze(0))
+
+        batch_text = sanitize_text(text)
+        input_tokens: List[List[int]] = [self.text_tokenizer.prepare_tts_tokens(text, speaker) for text in batch_text]
+
+        if audio is not None:
+            # Append audio tokens to the end of the text tokens
+            input_tokens = [i + audio_tokens.tolist()[:-16] for i in input_tokens]
+
+        logger.info(f'Texts after preprocessing: {batch_text}, {speaker}', extra={'request_id': request_id})
+        logger.info(f'Input tokens shape: {len(input_tokens)} and batch size: {len(batch_text)}', extra={'request_id': request_id})
+
+        prompt = TokensPrompt(prompt_token_ids=input_tokens[0])
+
+        results_generator = self.lm_engine.engine.generate(
+            prompt=prompt,
+            sampling_params=self.sampling_params,
+            request_id=request_id
+        )
+
+        preds: List[RequestOutput] = []
+
+        async for request_output in results_generator:
+            if request_output.finished:
+                preds.append(request_output)
+
+        mimi_tokens = []
+
+        metrics = {
+            'time_to_first_token': [],
+            'time_to_last_token': [],
+            'input_tokens': [],
+            'decoding_tokens': []
+        }
+
+        for idx, request_output in enumerate(preds):
+            o = np.array(request_output.outputs[0].token_ids)
+            end = np.where(o == self.text_tokenizer.stop_token[0])[0]
+
+            if len(end) > 0:
+                end = end[0]
+            else:
+                end = len(o)
+
+            o = o[:end]
+            o = o - cfg.OFFSET[MIMI]
+            o = deserialize_tokens(o)
+            assert np.all(o >= 0), f'Negative token index generated for batch {idx}'
+
+            metrics['time_to_first_token'].append(
+                request_output.metrics.first_token_time - request_output.metrics.first_scheduled_time
+            )
+            metrics['time_to_last_token'].append(
+                request_output.metrics.finished_time - request_output.metrics.first_scheduled_time
+            )
+            metrics['input_tokens'].append(len(request_output.prompt_token_ids))
+            metrics['decoding_tokens'].append(len(request_output.outputs[0].token_ids))
+
+            mimi_tokens.append(o)
+
+        mimi_tokens = np.concatenate(mimi_tokens, axis=1)
+        logger.info(f'Mimi tokens shape: {mimi_tokens.shape}')
+
+        audio, decode_time = self.audio_tokenizer.decode(mimi_tokens)
+        audio = pyln.normalize.peak(audio, -1.0)
+
+        metrics = TTSMetrics(
+            time_to_first_token=metrics['time_to_first_token'],
+            time_to_last_token=metrics['time_to_last_token'],
+            time_to_decode_audio=decode_time,
+            input_tokens=metrics['input_tokens'],
+            decoding_tokens=metrics['decoding_tokens'],
+            generate_end_to_end_time=time.time()-start_time
+        )
+
+        return {"audio": audio, "sample_rate": sample_rate, "metrics": metrics}
+
 async def main():
     import uuid
     import torchaudio
 
-    model = TTS('cmeraki/mimi_tts_hf_stage', 'cuda:0')
-    result = await model.generate_async(
-        'मेरे प्यारे देशवासियों, आज हम एक नए भारत की ओर कदम बढ़ा रहे हैं।',
-        speaker='[spkr_youtube_webds_hi_pmmodi]',
+    audio, sr = torchaudio.load('service/sample/mkbhd.sample1.completion.wav')
+
+    model = TTS('cmeraki/hf-tts-speakermashup', 'cuda:0')
+    result = await model.generate_async_with_audio(
+        'Everything is much sharper than the very pixelated looking metaglasses. Snapchat had similar glasses which failed miserably.',
+        speaker='[spkr_youtube_webds_en_mkbhd]',
+        audio=audio,
+        sample_rate=sr,
         request_id=str(uuid.uuid4())
     )
 
