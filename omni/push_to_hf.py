@@ -22,7 +22,7 @@ if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--model_path', type=str, help='Path to the model to push', required=True)
     parser.add_argument('--device', type=str, help='Device to use', default='cuda:0', required=False)
-    parser.add_argument('--repo_id', type=str, help='The hugging face repo id to push to', required=True, choices=['cmeraki/mimi_tts_hf', 'cmeraki/mimi_tts_hf_stage'])
+    parser.add_argument('--repo_id', type=str, help='The hugging face repo id to push to', required=True)
     parser.add_argument('--hf_token', type=str, help='Hugging Face token', required=False, default=os.environ.get('HF_TOKEN'))
     parser.add_argument('--commit_message', type=str, help='Commit message', required=False, default='HF upload')
 

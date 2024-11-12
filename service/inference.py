@@ -224,6 +224,70 @@ async def audio_completion(file: UploadFile = File(...)):
     )
 
 
+@app.post("/audio_completion_v2")
+async def audio_completion_v2(text: str, file: UploadFile = File(...)):
+    """
+    Receive a request with a wav file and return a completion
+    """
+    contents = await file.read()
+    audio, sr = torchaudio.load(contents)
+
+    request_id = str(uuid.uuid4())
+
+    start_time = time.time()
+    logger.info(f'Received audio completion request', extra={'request_id': request_id})
+
+    try:
+        # For audio completion, we don't have a speaker, so we use '[spkr_unk]' 
+        speaker = '[spkr_unk]'
+
+        results = await tts_model.generate_async_with_audio(
+            text=text,
+            speaker=speaker,
+            audio=audio,
+            sample_rate=sr,
+            request_id=request_id
+        )
+        metrics: TTSMetrics = results['metrics']
+
+        audio_tensor = torch.from_numpy(results['audio'])
+        logger.info(f'Audio shape: {audio_tensor.shape}', extra={'request_id': request_id})
+
+        buffer = io.BytesIO()
+        torchaudio.save(
+            buffer,
+            audio_tensor,
+            sample_rate=results['sample_rate'],
+            format='mp3',
+            encoding='PCM_S',
+            bits_per_sample=16,
+            backend='ffmpeg',
+            compression=CodecConfig(bit_rate=64000)
+        )
+        buffer.seek(0)
+
+    except Exception as e:
+        logger.critical(f"Error in model generation: {e}\nStacktrace: {''.join(traceback.format_tb(e.__traceback__))}", extra={'request_id': request_id})
+        raise HTTPException(status_code=500, detail=str(request_id) + ' ' + str(e))
+
+    end_time = time.time()
+    metrics.end_to_end_time = end_time - start_time
+
+    headers = {
+        "Content-Type": "audio/wav",
+        "Content-Disposition": "attachment; filename=speech.wav",
+        "x-request-id": request_id,
+        "x-metrics": json.dumps(metrics.model_dump())
+    }
+
+    logger.info(f'Metrics: {metrics}', extra={'request_id': request_id})
+
+    return Response(
+        content=buffer.getvalue(),
+        headers=headers,
+        media_type="audio/wav"
+    )
+
 if __name__ == "__main__":
     import uvicorn
     import argparse
