@@ -137,6 +137,10 @@ class AudioContinuationMetrics(BaseModel):
     generate_end_to_end_time: float
     end_to_end_time: Optional[float] = None
 
+class TTSRequest(BaseModel):
+    text: str
+    speaker: Speakers
+
 @dataclass
 class AudioOutput:
     audio: np.ndarray

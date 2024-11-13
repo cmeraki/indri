@@ -35,7 +35,7 @@ logger = get_logger(__name__)
 
 class TTS:
     def __init__(self, model_path: str, device: str = 'cuda:0'):
-        self.lm_engine = VLLMEngine(model_path, device, gpu_memory_utilization=0.4)
+        self.lm_engine = VLLMEngine(model_path, device, gpu_memory_utilization=0.8)
         self.audio_tokenizer = AudioTokenizer(device)
         self.text_tokenizer = TextTokenizer(model_path)
 
@@ -146,7 +146,7 @@ class TTS:
             generate_end_to_end_time=time.time()-start_time
         )
 
-        return {"audio": audio_output, "sample_rate": 24000, "metrics": metrics}
+        return AudioOutput(audio=audio_output, sample_rate=24000, audio_metrics=metrics)
 
 async def main():
     import uuid
@@ -163,7 +163,7 @@ async def main():
         request_id=str(uuid.uuid4())
     )
 
-    torchaudio.save('output_completion.wav', torch.from_numpy(result['audio']), sample_rate=24000, format='mp3')
+    torchaudio.save('output_tts.wav', torch.from_numpy(result['audio']), sample_rate=24000, format='mp3')
 
     # TTS with audio completion
     result = await model.generate_async(
