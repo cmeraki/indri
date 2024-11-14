@@ -3,6 +3,7 @@ from enum import Enum
 from pydantic import BaseModel
 from dataclasses import dataclass
 from typing import List, Optional, Tuple, Dict, Any
+from fastapi import File, UploadFile
 
 class Speakers(Enum):
     """
@@ -17,7 +18,7 @@ class Speakers(Enum):
     SPEAKER_7 = '[spkr_youtube_webds_hi_kabitaskitchen]'
     SPEAKER_8 = '[spkr_youtube_webds_hi_neelimaaudiobooks]'
     SPEAKER_9 = '[spkr_youtube_webds_en_derekperkins]'
-    SPEAKER_10 = '[spkr_youtube_webds_en_mukesh]'
+    # SPEAKER_10 = '[spkr_youtube_webds_en_mukesh]'
     SPEAKER_11 = '[spkr_youtube_webds_en_attenborough]'
     SPEAKER_12 = '[spkr_youtube_webds_hi_warikoo]'
     SPEAKER_13 = '[spkr_youtube_webds_hi_pmmodi]'
@@ -32,7 +33,7 @@ class MergedSpeakers(Enum):
     SPEAKER_7 = '[spkr_youtube_webds_hi_kabitaskitchen]'
     SPEAKER_8 = '[spkr_youtube_webds_hi_neelimaaudiobooks]'
     SPEAKER_9 = '[spkr_youtube_webds_en_derekperkins]'
-    SPEAKER_10 = '[spkr_youtube_webds_en_mukesh]'
+    # SPEAKER_10 = '[spkr_youtube_webds_en_mukesh]'
     SPEAKER_11 = '[spkr_youtube_webds_en_attenborough]'
     SPEAKER_12 = '[spkr_youtube_webds_hi_warikoo]'
     SPEAKER_13 = '[spkr_youtube_webds_hi_pmmodi]'
@@ -116,13 +117,10 @@ class MergedSpeakers(Enum):
     SPEAKER_11_13 = '[spkr_youtube_webds_en_attenborough_spkr_youtube_webds_hi_pmmodi]'
     SPEAKER_12_13 = '[spkr_youtube_webds_hi_warikoo_spkr_youtube_webds_hi_pmmodi]'
 
-class TTSRequest(BaseModel):
-    text: str
-    speaker: MergedSpeakers
-
 class TTSMetrics(BaseModel):
     time_to_first_token: List[float]
     time_to_last_token: List[float]
+    time_to_encode_audio: Optional[float] = None
     time_to_decode_audio: float
     input_tokens: List[int]
     decoding_tokens: List[int]
@@ -139,19 +137,15 @@ class AudioContinuationMetrics(BaseModel):
     generate_end_to_end_time: float
     end_to_end_time: Optional[float] = None
 
+class TTSRequest(BaseModel):
+    text: str
+    speaker: Speakers
+
 @dataclass
 class AudioOutput:
     audio: np.ndarray
     sample_rate: int
     audio_metrics: Dict[str, Any]
-
-class TTSResponse(BaseModel):
-    array: str
-    dtype: str
-    shape: Tuple
-    sample_rate: int
-    metrics: Optional[TTSMetrics] = None
-    request_id: Optional[str] = None
 
 class TTSSpeakersResponse(BaseModel):
     speakers: List[str]
@@ -240,14 +234,14 @@ SPEAKER_MAP = {
             "The characters in this story will take you on an unforgettable adventure."
         ]
     },
-    Speakers.SPEAKER_10: {
-        'id': '[spkr_youtube_webds_en_mukesh]',
-        'text': [
-            "Education is not just about degrees, it's about becoming a better human being.",
-            "Success comes to those who are willing to push beyond their comfort zones.",
-            "Today, let's discuss how to transform your dreams into achievable goals."
-        ]
-    },
+    # Speakers.SPEAKER_10: {
+    #     'id': '[spkr_youtube_webds_en_mukesh]',
+    #     'text': [
+    #         "Education is not just about degrees, it's about becoming a better human being.",
+    #         "Success comes to those who are willing to push beyond their comfort zones.",
+    #         "Today, let's discuss how to transform your dreams into achievable goals."
+    #     ]
+    # },
     Speakers.SPEAKER_11: {
         'id': '[spkr_youtube_webds_en_attenborough]',
         'text': [
@@ -345,14 +339,14 @@ SPEAKER_MAP = {
             "The characters in this story will take you on an unforgettable adventure."
         ]
     },
-    MergedSpeakers.SPEAKER_10: {
-        'id': '[spkr_youtube_webds_en_mukesh]',
-        'text': [
-            "Education is not just about degrees, it's about becoming a better human being.",
-            "Success comes to those who are willing to push beyond their comfort zones.",
-            "Today, let's discuss how to transform your dreams into achievable goals."
-        ]
-    },
+    # MergedSpeakers.SPEAKER_10: {
+    #     'id': '[spkr_youtube_webds_en_mukesh]',
+    #     'text': [
+    #         "Education is not just about degrees, it's about becoming a better human being.",
+    #         "Success comes to those who are willing to push beyond their comfort zones.",
+    #         "Today, let's discuss how to transform your dreams into achievable goals."
+    #     ]
+    # },
     MergedSpeakers.SPEAKER_11: {
         'id': '[spkr_youtube_webds_en_attenborough]',
         'text': [
