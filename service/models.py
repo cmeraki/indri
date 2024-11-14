@@ -18,7 +18,7 @@ class Speakers(Enum):
     SPEAKER_7 = '[spkr_youtube_webds_hi_kabitaskitchen]'
     SPEAKER_8 = '[spkr_youtube_webds_hi_neelimaaudiobooks]'
     SPEAKER_9 = '[spkr_youtube_webds_en_derekperkins]'
-    SPEAKER_10 = '[spkr_youtube_webds_en_mukesh]'
+    # SPEAKER_10 = '[spkr_youtube_webds_en_mukesh]'
     SPEAKER_11 = '[spkr_youtube_webds_en_attenborough]'
     SPEAKER_12 = '[spkr_youtube_webds_hi_warikoo]'
     SPEAKER_13 = '[spkr_youtube_webds_hi_pmmodi]'
@@ -33,7 +33,7 @@ class MergedSpeakers(Enum):
     SPEAKER_7 = '[spkr_youtube_webds_hi_kabitaskitchen]'
     SPEAKER_8 = '[spkr_youtube_webds_hi_neelimaaudiobooks]'
     SPEAKER_9 = '[spkr_youtube_webds_en_derekperkins]'
-    SPEAKER_10 = '[spkr_youtube_webds_en_mukesh]'
+    # SPEAKER_10 = '[spkr_youtube_webds_en_mukesh]'
     SPEAKER_11 = '[spkr_youtube_webds_en_attenborough]'
     SPEAKER_12 = '[spkr_youtube_webds_hi_warikoo]'
     SPEAKER_13 = '[spkr_youtube_webds_hi_pmmodi]'
@@ -234,14 +234,14 @@ SPEAKER_MAP = {
             "The characters in this story will take you on an unforgettable adventure."
         ]
     },
-    Speakers.SPEAKER_10: {
-        'id': '[spkr_youtube_webds_en_mukesh]',
-        'text': [
-            "Education is not just about degrees, it's about becoming a better human being.",
-            "Success comes to those who are willing to push beyond their comfort zones.",
-            "Today, let's discuss how to transform your dreams into achievable goals."
-        ]
-    },
+    # Speakers.SPEAKER_10: {
+    #     'id': '[spkr_youtube_webds_en_mukesh]',
+    #     'text': [
+    #         "Education is not just about degrees, it's about becoming a better human being.",
+    #         "Success comes to those who are willing to push beyond their comfort zones.",
+    #         "Today, let's discuss how to transform your dreams into achievable goals."
+    #     ]
+    # },
     Speakers.SPEAKER_11: {
         'id': '[spkr_youtube_webds_en_attenborough]',
         'text': [
@@ -339,14 +339,14 @@ SPEAKER_MAP = {
             "The characters in this story will take you on an unforgettable adventure."
         ]
     },
-    MergedSpeakers.SPEAKER_10: {
-        'id': '[spkr_youtube_webds_en_mukesh]',
-        'text': [
-            "Education is not just about degrees, it's about becoming a better human being.",
-            "Success comes to those who are willing to push beyond their comfort zones.",
-            "Today, let's discuss how to transform your dreams into achievable goals."
-        ]
-    },
+    # MergedSpeakers.SPEAKER_10: {
+    #     'id': '[spkr_youtube_webds_en_mukesh]',
+    #     'text': [
+    #         "Education is not just about degrees, it's about becoming a better human being.",
+    #         "Success comes to those who are willing to push beyond their comfort zones.",
+    #         "Today, let's discuss how to transform your dreams into achievable goals."
+    #     ]
+    # },
     MergedSpeakers.SPEAKER_11: {
         'id': '[spkr_youtube_webds_en_attenborough]',
         'text': [
