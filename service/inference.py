@@ -108,7 +108,6 @@ async def text_to_speech(request: TTSRequest):
         media_type="audio/wav"
     )
 
-
 @app.post("/audio_completion")
 async def audio_completion(text: str, file: UploadFile = File(...)):
     request_id = str(uuid.uuid4())
@@ -177,7 +176,6 @@ async def audio_completion(text: str, file: UploadFile = File(...)):
         headers=headers,
         media_type="audio/wav"
     )
-
 
 @app.get("/speakers", response_model=TTSSpeakersResponse)
 async def available_speakers():
