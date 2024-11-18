@@ -37,6 +37,8 @@ Choices:
 
 - `model_path`: `cmeraki/mimi_tts_hf`, `cmeraki/mimi_tts_hf_stage`
 
+Redirect to `http://localhost:8000/docs` to see the API documentation and test the service.
+
 ## Directory Structure
 
 - `inference.py`: Uvicorn server for the inference service.

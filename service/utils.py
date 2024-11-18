@@ -6,13 +6,14 @@ from typing import Tuple
 from .logger import get_logger
 logger = get_logger(__name__)
 
+# TODO: Rewrite in pytorch
 def deserialize_tokens(tokens, num_codebooks):
     cb = [tokens[i::num_codebooks] for i in range(num_codebooks)]
     min_shape = min([c.shape for c in cb])[0]
     acoustic_tokens = np.stack([c[:min_shape] - 2048 * i for i, c in enumerate(cb)])
     return acoustic_tokens
 
-
+# TODO: Rewrite in pytorch
 def codebook_encoding(tokens: torch.tensor, per_codebook_size: int, offset: int):
     """Receive n/4 x 4, flatten, add offset"""
 
