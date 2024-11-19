@@ -24,6 +24,11 @@ from .logger import get_logger
 from .launcher import _add_shutdown_handlers
 from .db.feedback import RealFakeFeedbackDB
 
+#Imports for audio_completion_v2
+from openai import OpenAI
+import whisper
+import os
+
 logger = get_logger(__name__)
 
 app = FastAPI()
@@ -43,6 +48,12 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["x-sample-id", "x-request-id", "x-metrics"]
 )
+
+global whisper_model
+whisper_model = whisper.load_model("small")
+
+OpenAI.api_key = os.getenv("OPENAI_API_KEY")
+client = OpenAI()
 
 @app.get("/health")
 async def health() -> Response:
@@ -171,6 +182,127 @@ async def audio_completion(text: str, file: UploadFile = File(...)):
 
     logger.info(f'Metrics: {metrics}', extra={'request_id': request_id})
 
+    return Response(
+        content=buffer.getvalue(),
+        headers=headers,
+        media_type="audio/wav"
+    )
+
+@app.post("/audio_completion_v2")
+async def audio_completion_v2(file: UploadFile = File(...)):
+    request_id = str(uuid.uuid4())
+    start_time = time.time()
+    
+    try:
+        # 1. Validate file type
+        allowed_types = {'.wav', '.mp3', '.m4a'}
+        file_ext = Path(file.filename).suffix.lower()
+        if file_ext not in allowed_types:
+            raise HTTPException(
+                status_code=400,
+                detail=f'Unsupported file type. Allowed types: {", ".join(allowed_types)}'
+            )
+        
+        # 2. Read file contents into memory
+        contents = await file.read()
+        logger.info(f'Received audio file: {file.filename}', extra={'request_id': request_id})
+        
+        # Load audio directly from buffer into tensor
+        audio_buffer = io.BytesIO(contents)
+        audio, sr = torchaudio.load(audio_buffer)
+        
+        # Ensure audio is in the correct format for Whisper
+        if audio.dim() > 2:
+            audio = audio.mean(dim=0, keepdim=True)  # Convert to mono if multichannel
+        elif audio.dim() == 1:
+            audio = audio.unsqueeze(0)  # Add batch dimension if missing
+            
+        # Convert to mono if stereo
+        if audio.shape[0] > 1:
+            audio = audio.mean(dim=0, keepdim=True)
+            
+        # Resample to 16kHz if needed (Whisper requirement)
+        if sr != 16000:
+            resampler = torchaudio.transforms.Resample(sr, 16000)
+            audio = resampler(audio)
+            sr = 16000
+            
+        # Convert to numpy array and ensure correct shape
+        audio_numpy = audio.squeeze().numpy()  # Remove any extra dimensions
+        
+        # 3. Use Whisper to transcribe the audio
+        transcription_result = whisper_model.transcribe(audio_numpy)
+        spoken_text = transcription_result["text"]
+        logger.info(f'Transcribed text: {spoken_text}', extra={'request_id': request_id})
+        
+        # 4. Use GPT to complete the text
+        completion = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "Continue the given text naturally for about 2-3 sentences or 100 tokens, maintaining the same style and context."},
+                {"role": "user", "content": spoken_text}
+            ],
+            max_tokens=10,
+            temperature=0.7
+        )
+        
+        completed_text = completion.choices[0].message.content
+        logger.info(f'Completed text: {completed_text}', extra={'request_id': request_id})
+        
+        # 5. Combine original and completed text
+        combined_text = f"{spoken_text} {completed_text}"
+        logger.info(f'Combined text: {combined_text}', extra={'request_id': request_id})
+        
+        # 6. Generate audio using TTS model
+        results: AudioOutput = await tts_model.generate_async(
+            text=combined_text,
+            speaker='[spkr_unk]',
+            audio=audio,  # Pass the original audio tensor
+            sample_rate=sr,
+            request_id=request_id
+        )
+        
+        metrics: TTSMetrics = results.audio_metrics
+        audio_tensor = torch.from_numpy(results.audio)
+        
+        if audio_tensor.dim() == 1:
+            audio_tensor = audio_tensor.unsqueeze(0)
+            
+        logger.info(f'Audio shape: {audio_tensor.shape}', extra={'request_id': request_id})
+        
+        # 7. Save the generated audio to buffer
+        buffer = io.BytesIO()
+        torchaudio.save(
+            buffer,
+            audio_tensor,
+            sample_rate=results.sample_rate,
+            format='mp3',
+            encoding='PCM_S',
+            bits_per_sample=16,
+            backend='ffmpeg',
+            compression=CodecConfig(bit_rate=64000)
+        )
+        buffer.seek(0)
+        
+    except Exception as e:
+        logger.critical(
+            f"Error in model generation: {e}\nStacktrace: {''.join(traceback.format_tb(e.__traceback__))}",
+            extra={'request_id': request_id}
+        )
+        raise HTTPException(status_code=500, detail=str(request_id) + ' ' + str(e))
+    
+    end_time = time.time()
+    metrics.end_to_end_time = end_time - start_time
+    
+    headers = {
+        "Content-Type": "audio/wav",
+        "Content-Disposition": "attachment; filename=speech_completion.wav",
+        "x-request-id": request_id,
+        "x-metrics": json.dumps(metrics.model_dump()),
+        "x-transcribed-text": spoken_text,
+        "x-completed-text": completed_text
+    }
+    
     return Response(
         content=buffer.getvalue(),
         headers=headers,
