@@ -15,3 +15,5 @@ webdataset
 vllm
 fastapi
 pydantic
+whisper
+openai
