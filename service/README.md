@@ -29,19 +29,10 @@ python -m service.inference --model_path <model_path> --device <device> --port <
 
 Defaults:
 
-- `model_path`: `cmeraki/mimi_tts_hf`
+- `model_path`: `11mlabs/indri-0.1-124m-tts`
 - `device`: `cuda:0`
 - `port`: `8000`
 
 Choices:
 
-- `model_path`: `cmeraki/mimi_tts_hf`, `cmeraki/mimi_tts_hf_stage`
-
-Redirect to `http://localhost:8000/docs` to see the API documentation and test the service.
-
-## Directory Structure
-
-- `inference.py`: Uvicorn server for the inference service.
-- `models.py`: Pydantic models for the inference service.
-- `tts.py`: vLLM model wrapper for the TTS model.
-- `requirements.txt`: Python dependencies for the inference service.
+[HuggingFace collection](https://huggingface.co/collections/11mlabs/indri-673dd4210b4369037c736bfe)

@@ -1,48 +1,46 @@
-TTS
-===
+# Indri
 
-Trains text-semantic and semantic-acoustic models to be used for training omni
+[![HuggingFace](https://img.shields.io/badge/🤗%20Hugging%20Face-11mlabs-blue)](https://huggingface.co/11mlabs)
 
-```
-pip install -r requirements.txt
-```
+Multimodal audio LMs for TTS, ASR, and voice cloning
 
-for preparing tokens refer to https://github.com/cmeraki/audiotoken/
+## Running locally
 
-### Training 
-```
-python -m tts.train
-```
+### Prerequisites
 
-1. Download already prepared token data from huggingface. uses 100GB of disk space. Downloads 50GB and untar takes 1 hour.  
+- Python 3.10+
+- CUDA 12.1+
 
-2. Train a model using downloaded tokens.
+Install dependencies:
 
-
-### Inference
-Downloads pretrained models and runs inference on them.
-
-```
-python -m tts.infer --size 125m --text 'mary had a little lamb <comma> and she was white as snow'
+```bash
+pip install -r service/requirements.txt
 ```
 
-### Samples
-Since we don't have speaker profiles, every generation without past context, produces a different voice profiles. 
+Install [ffmpeg](https://www.ffmpeg.org/download.html):
 
-Here are a few samples generated from 125m: 
+For linux:
 
-https://github.com/user-attachments/assets/0cd4684c-6082-48be-976a-81c194dddcd8
-
-https://github.com/user-attachments/assets/c28f8715-1023-400c-82be-c4b5610dc1b6
-
-### Long inference
+```bash
+sudo apt update -y
+sudo apt upgrade -y
+sudo apt install ffmpeg -y
 ```
-python -m tts.long_infer
+
+### Running the service
+
+```bash
+python -m service.inference --model_path <model_path> --device <device> --port <port>
 ```
-This runs the model iteratively using prior generation as a part of context
 
-An example of a long inference: 
+Defaults:
 
-https://github.com/user-attachments/assets/921a0503-1422-4d87-a541-b2f7913e79c1
+- `model_path`: `11mlabs/indri-0.1-124m-tts`
+- `device`: `cuda:0`
+- `port`: `8000`
 
+Choices:
 
+[HuggingFace collection](https://huggingface.co/collections/11mlabs/indri-673dd4210b4369037c736bfe)
+
+Redirect to `http://localhost:8000/docs` to see the API documentation and test the service.
