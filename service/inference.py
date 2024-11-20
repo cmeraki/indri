@@ -207,7 +207,7 @@ async def audio_completion_v2(file: UploadFile = File(...)):
         contents = await file.read()
         logger.info(f'Received audio file: {file.filename}', extra={'request_id': request_id})
         
-        audio, sr = torchaudio.load()
+        audio, sr = torchaudio.load(audio_buffer)
         
         if audio.dim() > 2:
             audio = audio.mean(dim=0, keepdim=True)  
@@ -219,7 +219,15 @@ async def audio_completion_v2(file: UploadFile = File(...)):
             audio = resampler(audio)
             sr = 16000
             
-        audio_numpy = audio.squeeze().numpy()  
+        max_samples = 5 * sr 
+        if audio.size(-1) > max_samples:
+            logger.info(
+                f'Truncating audio from {audio.size(-1)/sr:.2f}s to 5s',
+                extra={'request_id': request_id}
+            )
+            audio = audio[..., :max_samples]
+            
+        audio_numpy = audio.squeeze().numpy()
         
         transcription_result = whisper_model.transcribe(audio_numpy)
         spoken_text = transcription_result["text"]
