@@ -14,7 +14,7 @@ Multimodal audio LMs for TTS, ASR, and voice cloning
 Install dependencies:
 
 ```bash
-pip install -r service/requirements.txt
+pip install -r requirements.txt
 ```
 
 Install [ffmpeg](https://www.ffmpeg.org/download.html):
@@ -30,17 +30,16 @@ sudo apt install ffmpeg -y
 ### Running the service
 
 ```bash
-python -m service.inference --model_path <model_path> --device <device> --port <port>
+python -m inference --model_path 11mlabs/indri-0.1-124m-tts --device cuda:0 --port 8000
 ```
 
 Defaults:
 
-- `model_path`: `11mlabs/indri-0.1-124m-tts`
 - `device`: `cuda:0`
 - `port`: `8000`
 
 Choices:
 
-[HuggingFace collection](https://huggingface.co/collections/11mlabs/indri-673dd4210b4369037c736bfe)
+- `model_path`: [HuggingFace collection](https://huggingface.co/collections/11mlabs/indri-673dd4210b4369037c736bfe)
 
 Redirect to `http://localhost:8000/docs` to see the API documentation and test the service.

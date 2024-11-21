@@ -1,6 +1,3 @@
-import sys
-sys.path.append('omni/')
-
 import time
 import torch
 import torchaudio
@@ -12,10 +9,10 @@ import pyloudnorm as pyln
 from vllm import SamplingParams, RequestOutput
 from vllm.inputs import TokensPrompt
 
-from commons import MIMI
-from commons import Config as cfg
+from .commons import MIMI
+from .commons import Config as cfg
 
-from .src import (
+from .engine import (
     VLLMEngine,
     AudioTokenizer,
     TextTokenizer
@@ -156,7 +153,7 @@ async def main():
     import uuid
     import torchaudio
 
-    audio, sr = torchaudio.load('service/sample/mkbhd.sample1.completion.wav')
+    audio, sr = torchaudio.load('sample/mkbhd.sample1.completion.wav')
 
     model = TTS('cmeraki/hf-tts-speakermashup', 'cuda:0')
     await model.log_config()

@@ -14,8 +14,8 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 from dataclasses import dataclass
 
-from ..models import TTSResponse
-from ..logger import get_logger
+from ..src.models import TTSResponse
+from ..src.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -49,7 +49,7 @@ class TTSLoadTester:
         self.qps_step = qps_step
         self.step_duration = timedelta(minutes=step_duration_minutes)
 
-        with open('service/tests/test_data.txt', 'r', encoding='utf-8') as f:
+        with open('tests/test_data.txt', 'r', encoding='utf-8') as f:
             self.test_texts = [line.strip() for line in f if line.strip()]
 
         logger.info(f"Loaded {len(self.test_texts)} test texts")

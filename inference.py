@@ -13,16 +13,16 @@ from fastapi import FastAPI, HTTPException, File, UploadFile
 from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 
-from .tts import TTS
-from .models import (
+from src.tts import TTS
+from src.models import (
     TTSSpeakersResponse, Speakers, TTSRequest,
     SpeakerTextRequest, SpeakerTextResponse, AudioFeedbackRequest,
     AudioOutput, TTSMetrics
 )
-from .models import SPEAKER_MAP
-from .logger import get_logger
-from .launcher import _add_shutdown_handlers
-from .db.feedback import RealFakeFeedbackDB
+from src.logger import get_logger
+from src.models import SPEAKER_MAP
+from src.launcher import _add_shutdown_handlers
+from src.db.feedback import RealFakeFeedbackDB
 
 logger = get_logger(__name__)
 
@@ -200,7 +200,7 @@ async def sample_audio():
         choice = random.choice(sample_audio_files)
         logger.info(f'Serving sample audio: {choice}')
 
-        aud, sr = torchaudio.load(f'service/data/{choice}.wav')
+        aud, sr = torchaudio.load(f'data/{choice}.wav')
 
         buffer = io.BytesIO()
         torchaudio.save(
@@ -262,7 +262,7 @@ if __name__ == "__main__":
     global tts_model
     tts_model = TTS(model_path=args.model_path, device=args.device)
 
-    file_names = list(Path('service/data/').resolve().glob('**/*.wav'))
+    file_names = list(Path('data/').resolve().glob('**/*.wav'))
     logger.info(f'Found {len(file_names)} sample audio files')
 
     global sample_audio_files

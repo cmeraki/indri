@@ -2,8 +2,7 @@ import numpy as np
 from enum import Enum
 from pydantic import BaseModel
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Dict, Any
-from fastapi import File, UploadFile
+from typing import List, Optional, Dict, Any
 
 class Speakers(Enum):
     """

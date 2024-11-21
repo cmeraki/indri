@@ -7,13 +7,11 @@ from vllm import AsyncEngineArgs
 from vllm.engine.async_llm_engine import AsyncLLMEngine
 from transformers import MimiModel, AutoTokenizer
 
-from ..logger import get_logger
-from ..utils import codebook_encoding
+from .logger import get_logger
+from .utils import codebook_encoding
 
-import sys
-sys.path.append('omni/')
-from commons import TEXT, MIMI, CONVERT
-from commons import Config as cfg
+from .commons import TEXT, MIMI, CONVERT
+from .commons import Config as cfg
 
 logger = get_logger(__name__)
 
