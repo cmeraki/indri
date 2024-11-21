@@ -207,7 +207,7 @@ async def audio_completion_v2(file: UploadFile = File(...)):
         contents = await file.read()
         logger.info(f'Received audio file: {file.filename}', extra={'request_id': request_id})
         
-        audio, sr = torchaudio.load(audio_buffer)
+        audio, sr = torchaudio.load(io.BytesIO(contents))
         
         if audio.dim() > 2:
             audio = audio.mean(dim=0, keepdim=True)  
