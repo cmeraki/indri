@@ -1,8 +1,6 @@
 import torch
 import random
 import numpy as np
-from pathlib import Path
-from contextlib import nullcontext
 
 MIMI = 'mimi'
 TEXT = 'text'
@@ -20,23 +18,6 @@ np.random.seed(seed)
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 rng_state = torch.random.get_rng_state()
-
-DEVICE = 'cuda:0'
-dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16'
-device_type = 'cuda' if 'cuda' in DEVICE else 'cpu'
-ptdtype = {
-    'float32': torch.float32,
-    'bfloat16': torch.bfloat16,
-    'float16': torch.float16
-}[dtype]
-
-CTX = nullcontext() if device_type == 'cpu' else torch.autocast(device_type=device_type, dtype=ptdtype)
-CACHE_DIR = Path("~/.cache/indri/").expanduser()
-Path(CACHE_DIR).mkdir(exist_ok=True, parents=True)
-
-print('Cache directory at: ', CACHE_DIR)
-
-SPEAKER_FILE = Path('omni/allowed_speakers.jsonl').absolute()
 
 class Config:
     n_codebooks = 8

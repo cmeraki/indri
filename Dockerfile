@@ -16,10 +16,10 @@ ENV PORT=8000
 
 EXPOSE 8000
 
-COPY service/requirements.txt .
+COPY requirements.txt .
 RUN pip3 install -r requirements.txt
 
 WORKDIR /app
-COPY service /app
+COPY . /app
 
 ENTRYPOINT ["python3", "-m", "inference", "--model_path", "${MODEL_PATH}", "--device", "${DEVICE}", "--port", "${PORT}"]

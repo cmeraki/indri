@@ -1,6 +1,3 @@
-import sys
-sys.path.append('omni/')
-
 import time
 import torch
 import torchaudio
@@ -12,20 +9,20 @@ from typing import List, Optional
 from vllm import SamplingParams, RequestOutput
 from vllm.inputs import TokensPrompt
 
-from commons import MIMI
-from commons import Config as cfg
+from .commons import MIMI
+from .commons import Config as cfg
 
 from .engine import (
     Engine,
     AudioTokenizer,
     TextTokenizer
 )
-from ..models import AudioOutput
-from ..utils import (
+from .models import AudioOutput
+from .utils import (
     alternative_logits_processor,
     deserialize_tokens
 )
-from ..logger import get_logger
+from .logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -129,7 +126,7 @@ async def main():
     import uuid
     import torchaudio
 
-    audio, sr = torchaudio.load('service/data/modi.sample1.real.wav')
+    audio, sr = torchaudio.load('data/modi.sample1.real.wav')
     audio = audio[:, :sr * 5]
 
     model = AudioContinuation('cmeraki/hf-audio-continue', 'cuda:0')
