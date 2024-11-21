@@ -21,6 +21,7 @@ def push_to_hub(path, model_id, pipe):
     pipe.save_pretrained(path)
     repo.push_to_hub()
 
+
 if __name__ == "__main__":
     model_id = "cmeraki/mimi_124m_8cb"
     task = "indri-tts"
