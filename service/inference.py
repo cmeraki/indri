@@ -51,7 +51,7 @@ app.add_middleware(
 )
 
 global whisper_model
-whisper_model = whisper.load_model("small")
+whisper_model = whisper.load_model("medium")
 
 load_dotenv()
 OpenAI.api_key = os.getenv("OPENAI_API_KEY")
@@ -229,7 +229,7 @@ async def audio_completion_v2(file: UploadFile = File(...)):
             
         audio_numpy = audio.squeeze().numpy()
         
-        transcription_result = whisper_model.transcribe(audio_numpy)
+        transcription_result = whisper_model.transcribe(audio_numpy, word_timestamps=True)
         spoken_text = transcription_result["text"]
         logger.info(f'Transcribed text: {spoken_text}', extra={'request_id': request_id})
         
@@ -256,7 +256,8 @@ async def audio_completion_v2(file: UploadFile = File(...)):
             sample_rate=sr,
             request_id=request_id
         )
-        
+
+        audio_tensor = torch.from_numpy(results.audio)
         if audio_tensor.dim() == 1:
             audio_tensor = audio_tensor.unsqueeze(0)
             
@@ -285,10 +286,7 @@ async def audio_completion_v2(file: UploadFile = File(...)):
     headers = {
         "Content-Type": "audio/wav",
         "Content-Disposition": "attachment; filename=speech_completion.wav",
-        "x-request-id": request_id,
-        "x-metrics": json.dumps(metrics.model_dump()),
-        "x-transcribed-text": spoken_text,
-        "x-completed-text": completed_text
+        "x-request-id": request_id
     }
     
     return Response(
