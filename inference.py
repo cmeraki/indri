@@ -262,7 +262,7 @@ if __name__ == "__main__":
     global tts_model
     tts_model = TTS(model_path=args.model_path, device=args.device)
 
-    file_names = list(Path('data/').resolve().glob('**/*.wav'))
+    file_names = list(Path('sample/').resolve().glob('**/*.wav'))
     logger.info(f'Found {len(file_names)} sample audio files')
 
     global sample_audio_files
