@@ -200,7 +200,7 @@ async def sample_audio():
         choice = random.choice(sample_audio_files)
         logger.info(f'Serving sample audio: {choice}')
 
-        aud, sr = torchaudio.load(f'data/{choice}.wav')
+        aud, sr = torchaudio.load(f'sample/{choice}.wav')
 
         buffer = io.BytesIO()
         torchaudio.save(
