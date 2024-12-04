@@ -30,7 +30,7 @@ sudo apt install ffmpeg -y
 ### Running the service
 
 ```bash
-python -m inference --model_path 11mlabs/indri-0.1-124m-tts --device cuda:0 --port 8000
+python -m server --model_path 11mlabs/indri-0.1-124m-tts --device cuda:0 --port 8000
 ```
 
 Defaults:
