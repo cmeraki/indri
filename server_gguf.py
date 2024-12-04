@@ -1,7 +1,6 @@
 import io
 import time
 import json
-import uuid
 import torch
 import random
 import traceback
@@ -11,7 +10,7 @@ from torio.io import CodecConfig
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import Response
 
-from src.tts_ggml import TTS_GGML
+from src.tts_gguf import TTS_GGUF
 from src.models import (
     TTSSpeakersResponse, Speakers, TTSRequest,
     SpeakerTextRequest, SpeakerTextResponse,
@@ -29,10 +28,8 @@ async def health() -> Response:
 
 @app.post("/tts")
 async def text_to_speech(request: TTSRequest):
-    request_id = str(uuid.uuid4())
-
     start_time = time.time()
-    logger.info(f'Received text: {request.text} with speaker: {request.speaker}', extra={'request_id': request_id})
+    logger.info(f'Received text: {request.text} with speaker: {request.speaker}')
 
     try:
         speaker = SPEAKER_MAP.get(request.speaker, {'id': None}).get('id')
@@ -40,15 +37,14 @@ async def text_to_speech(request: TTSRequest):
         if speaker is None:
             raise HTTPException(status_code=400, detail=f'Speaker {speaker} not supported')
 
-        results: AudioOutput = await tts_model.generate_async(
+        results: AudioOutput = tts_model.generate(
             text=request.text,
-            speaker=speaker,
-            request_id=request_id
+            speaker=speaker
         )
         metrics: TTSMetrics = results.audio_metrics
 
         audio_tensor = torch.from_numpy(results.audio)
-        logger.info(f'Audio shape: {audio_tensor.shape}', extra={'request_id': request_id})
+        logger.info(f'Audio shape: {audio_tensor.shape}')
 
         buffer = io.BytesIO()
         torchaudio.save(
@@ -64,22 +60,21 @@ async def text_to_speech(request: TTSRequest):
         buffer.seek(0)
 
     except Exception as e:
-        logger.critical(f"Error in model generation: {e}\nStacktrace: {''.join(traceback.format_tb(e.__traceback__))}", extra={'request_id': request_id})
-        raise HTTPException(status_code=500, detail=str(request_id) + ' ' + str(e))
+        logger.critical(f"Error in model generation: {e}\nStacktrace: {''.join(traceback.format_tb(e.__traceback__))}")
+        raise HTTPException(status_code=500, detail=str(e))
 
     end_time = time.time()
     metrics.end_to_end_time = end_time - start_time
 
-    logger.info(f'Metrics: {metrics}', extra={'request_id': request_id})
+    logger.info(f'Metrics: {metrics}')
 
     headers = {
         "Content-Type": "audio/wav",
         "Content-Disposition": "attachment; filename=speech_completion.wav",
-        "x-request-id": request_id,
         "x-metrics": json.dumps(metrics.model_dump())
     }
 
-    logger.info(f'Metrics: {metrics}', extra={'request_id': request_id})
+    logger.info(f'Metrics: {metrics}')
 
     return Response(
         content=buffer.getvalue(),
@@ -111,16 +106,15 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--model_path', type=str, default='11mlabs/indri-0.1-124m-tts', help='HF model repository id')
-    parser.add_argument('--device', type=str, default='cuda:0', required=False, help='Device to use for inference')
+    parser.add_argument('--model_path', type=str, default='http://localhost:8080/', help='Server endpoint for the llama model')
     parser.add_argument('--port', type=int, default=8000, required=False, help='Port to run the server on')
 
     args =  parser.parse_args()
 
-    logger.info(f'Loading model from {args.model_path} on {args.device} and starting server on port {args.port}')
+    logger.info(f'Loading model from {args.model_path} and starting server on port {args.port}')
 
     global tts_model
-    tts_model = TTS_GGML(model_path=args.model_path)
+    tts_model = TTS_GGUF(model_path=args.model_path)
 
     server = uvicorn.Server(config=uvicorn.Config(app, host="0.0.0.0", port=args.port))
     server.run()
