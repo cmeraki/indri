@@ -63,7 +63,6 @@ class IndriTTSPipeline(Pipeline):
         return acoustic_tokens
 
     def preprocess(self, inputs, speaker):
-        # TODO: Check for batching
         input_text = self._sanitize_text(inputs)
         input_tokens = self.tokenizer.encode(input_text)
         task_tokens = self._prepare_tts_tokens(input_tokens, speaker)
