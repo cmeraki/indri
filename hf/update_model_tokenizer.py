@@ -23,16 +23,11 @@ def push_to_hub(path, model_id, pipe):
     repo.push_to_hub()
 
 
-def update_tokenizer(tokenizer):
-    tokenizer.eos_token = '[stop]'
-    return tokenizer
-
-
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model_id', type=str, required=True)
-    parser.add_argument('--path', type=str, required=True)
+    parser.add_argument('--model_id', type=str, required=True, help='The model id on HF to update')
+    parser.add_argument('--path', type=str, required=True, help='Local path to clone the HF repo (should be a empty directory)')
 
     args = parser.parse_args()
 
