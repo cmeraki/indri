@@ -17,10 +17,10 @@ This repo hosts the inference code for inference of Indri models.
 
 | Text | Sample |
 | --- | --- |
-|मित्रों, हम आज एक नया छोटा और शक्तिशाली मॉडल रिलीज कर रहे हैं।| <audio controls src="https://huggingface.co/11mlabs/indri-0.1-124m-tts/resolve/main/data/cebed668-62cb-4188-a2e1-3af8e017d3ba.wav" title="Title"></audio> |
-|भाइयों और बहनों, ये हमारा सौभाग्य है कि हम सब मिलकर इस महान देश को नई ऊंचाइयों पर ले जाने का सपना देख रहे हैं।| <audio controls src="https://huggingface.co/11mlabs/indri-0.1-124m-tts/resolve/main/data/6e0a4879-0379-4166-a52c-03220a3f2922.wav" title="Title"></audio> |
-|Hello दोस्तों, future of speech technology mein अपका स्वागत है | <audio controls src="https://huggingface.co/11mlabs/indri-0.1-124m-tts/resolve/main/data/5848b722-efe3-4e1f-a15e-5e7d431cd475.wav" title="Title"></audio> |
-|In this model zoo, a new model called Indri has appeared.| <audio controls src="https://huggingface.co/11mlabs/indri-0.1-124m-tts/resolve/main/data/7ac0df93-edbd-47b2-b850-fb88e329998c.wav" title="Title"></audio> |
+|मित्रों, हम आज एक नया छोटा और शक्तिशाली मॉडल रिलीज कर रहे हैं।| <audio controls src="./data/data_cebed668-62cb-4188-a2e1-3af8e017d3ba.wav" title="Title"></audio> |
+|भाइयों और बहनों, ये हमारा सौभाग्य है कि हम सब मिलकर इस महान देश को नई ऊंचाइयों पर ले जाने का सपना देख रहे हैं।| <audio controls src="./data/data_6e0a4879-0379-4166-a52c-03220a3f2922.wav" title="Title"></audio> |
+|Hello दोस्तों, future of speech technology mein अपका स्वागत है | <audio controls src="./data/data_5848b722-efe3-4e1f-a15e-5e7d431cd475.wav" title="Title"></audio> |
+|In this model zoo, a new model called Indri has appeared.| <audio controls src="./data/data_7ac0df93-edbd-47b2-b850-fb88e329998c.wav" title="Title"></audio> |
 
 ## Key features
 
