@@ -25,7 +25,7 @@ Once the model is placed inside the directory, run the `llama-cpp` server from i
 
 ```bash
 # For F16 model, update for different quantization accordingly
-./build/bin/llama-server -m /indri-0.1-124M-tts-F16.gguf --samplers 'top_k:temperature' --top_k 15
+./build/bin/llama-server -m /indri-0.1-124M-tts-F16.gguf --samplers 'top_k;temperature' --top_k 15
 ```
 
 Refer [here](https://github.com/ggerganov/llama.cpp/tree/master/examples/main) if you are facing issues in running the llama-server locally.
