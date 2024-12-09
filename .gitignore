@@ -170,3 +170,5 @@ omni.wav
 *.py.swp
 debug/
 *.db
+trace.json
+*.gz
