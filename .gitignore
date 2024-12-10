@@ -172,3 +172,4 @@ debug/
 *.db
 trace.json
 *.gz
+profiling/*
